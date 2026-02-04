@@ -1,4 +1,3 @@
-
 "use client";
 
 const DB_NAME = "KuskoDentoDB";
@@ -13,13 +12,14 @@ export interface User {
 
 export interface Patient {
   id: string;
-  dni: string; // Opcional, autollenado con ceros
+  dni: string;
   names: string;
   lastNames: string;
   email?: string;
   phone: string;
   address: string;
-  photo?: string; // dataUri
+  photo?: string;
+  age?: number;
   registrationDate: string;
   
   // Historia Clínica
@@ -33,13 +33,21 @@ export interface Patient {
   consultationReason: string;
   diagnostic: string;
   medicalObservations: string;
-  attendedBy: string; // Doctor Username
+  attendedBy: string;
 }
 
 export interface Treatment {
   id: string;
   name: string;
   price: number;
+}
+
+export interface PatientTreatment {
+  id: string;
+  patientId: string;
+  treatmentId: string;
+  date: string;
+  actualPrice: number;
 }
 
 export interface Appointment {
@@ -110,7 +118,7 @@ export class LocalDB {
         const db = (event.target as IDBOpenDBRequest).result;
         
         const stores = [
-          'users', 'patients', 'treatments', 'appointments', 
+          'users', 'patients', 'treatments', 'patient_treatments', 'appointments', 
           'payments', 'radiographs', 'consents', 'odontograms'
         ];
 
@@ -139,7 +147,7 @@ export class LocalDB {
       const store = transaction.objectStore(storeName);
       const request = store.getAll();
 
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => resolve(request.result || []);
       request.onerror = () => reject(request.error);
     });
   }
@@ -182,13 +190,13 @@ export class LocalDB {
 
   async exportData(): Promise<string> {
     await this.init();
-    const stores = ['users', 'patients', 'treatments', 'appointments', 'payments', 'radiographs', 'consents', 'odontograms'];
+    const stores = ['users', 'patients', 'treatments', 'patient_treatments', 'appointments', 'payments', 'radiographs', 'consents', 'odontograms'];
     const data: any = {};
 
     for (const store of stores) {
       const items = await this.getAll(store);
       data[store] = await Promise.all(items.map(async (item: any) => {
-        if (item.fileBlob) {
+        if (item.fileBlob instanceof Blob) {
           const reader = new FileReader();
           const base64 = await new Promise<string>((resolve) => {
             reader.onloadend = () => resolve(reader.result as string);
