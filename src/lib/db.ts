@@ -103,6 +103,7 @@ export interface Odontogram {
   patientId: string;
   data: any;
   date: string;
+  diagnostic?: string;
 }
 
 export class LocalDB {

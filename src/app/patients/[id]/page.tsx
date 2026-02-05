@@ -1,18 +1,18 @@
-
 "use client";
 
 import { useState, useEffect, use } from 'react';
 import { AuthProvider } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { db, Patient, Treatment, PatientTreatment, Payment, Radiograph, Consent, Appointment } from '@/lib/db';
+import { db, Patient, Radiograph, Consent, Appointment, Payment, Odontogram } from '@/lib/db';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Calendar, CreditCard, Stethoscope, Image as ImageIcon, FileText, Activity, ChevronLeft, Plus, Eye, History, Upload, Trash2, Download } from 'lucide-react';
+import { Calendar, CreditCard, Stethoscope, Image as ImageIcon, FileText, Activity, ChevronLeft, Plus, Eye, History, Upload, Trash2, Download, ZoomIn, X } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 export default function PatientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -22,6 +22,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   const [radiographs, setRadiographs] = useState<Radiograph[]>([]);
   const [consents, setConsents] = useState<Consent[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [odontograms, setOdontograms] = useState<Odontogram[]>([]);
+  
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   useEffect(() => {
     loadAll();
@@ -33,16 +36,19 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     setPatient(p);
 
     const allPayments = await db.getAll<Payment>('payments');
-    setPayments((allPayments || []).filter(pay => pay.patientId === id));
+    setPayments((allPayments || []).filter(pay => pay.patientId === id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
 
     const allRad = await db.getAll<Radiograph>('radiographs');
-    setRadiographs((allRad || []).filter(r => r.patientId === id));
+    setRadiographs((allRad || []).filter(r => r.patientId === id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
 
     const allConsents = await db.getAll<Consent>('consents');
-    setConsents((allConsents || []).filter(c => c.patientId === id));
+    setConsents((allConsents || []).filter(c => c.patientId === id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
 
     const allApp = await db.getAll<Appointment>('appointments');
-    setAppointments((allApp || []).filter(a => a.patientId === id));
+    setAppointments((allApp || []).filter(a => a.patientId === id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+
+    const allOdo = await db.getAll<Odontogram>('odontograms');
+    setOdontograms((allOdo || []).filter(o => o.patientId === id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
   };
 
   const handleFileUpload = async (type: 'radiograph' | 'consent', e: React.ChangeEvent<HTMLInputElement>) => {
@@ -115,6 +121,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
               <TabsTrigger value="overview" className="gap-2 py-3 px-6"><Eye className="w-4 h-4" /> Resumen Historia</TabsTrigger>
               <TabsTrigger value="radiographs" className="gap-2 py-3 px-6"><ImageIcon className="w-4 h-4" /> Radiografías</TabsTrigger>
               <TabsTrigger value="consents" className="gap-2 py-3 px-6"><FileText className="w-4 h-4" /> Consentimientos</TabsTrigger>
+              <TabsTrigger value="odontograms" className="gap-2 py-3 px-6"><Activity className="w-4 h-4" /> Odontogramas</TabsTrigger>
               <TabsTrigger value="payments" className="gap-2 py-3 px-6"><CreditCard className="w-4 h-4" /> Financiero</TabsTrigger>
               <TabsTrigger value="appointments" className="gap-2 py-3 px-6"><Calendar className="w-4 h-4" /> Citas</TabsTrigger>
             </TabsList>
@@ -182,12 +189,6 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                            <h4 className="text-xs font-bold uppercase text-muted-foreground mb-1">Diagnóstico</h4>
                            <p className="text-sm">{patient.diagnostic || 'N/A'}</p>
                         </div>
-                        {patient.allergicToMeds && (
-                           <div className="p-4 bg-red-50 border border-red-100 rounded-lg">
-                              <h4 className="text-xs font-bold uppercase text-red-600 mb-1">Alergias detalladas</h4>
-                              <p className="text-sm font-bold text-red-700">{patient.allergiesDetail}</p>
-                           </div>
-                        )}
                       </div>
                    </CardContent>
                  </Card>
@@ -213,20 +214,19 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
                    {radiographs.map(r => (
                      <Card key={r.id} className="overflow-hidden group relative border-none shadow-sm hover:shadow-md transition-all">
-                       <div className="aspect-square bg-slate-100 flex items-center justify-center overflow-hidden">
+                       <div className="aspect-square bg-slate-100 flex items-center justify-center overflow-hidden cursor-zoom-in" onClick={() => setZoomedImage(URL.createObjectURL(r.fileBlob))}>
                           {r.fileType.startsWith('image/') ? (
                              <img 
                                 src={URL.createObjectURL(r.fileBlob)} 
                                 className="w-full h-full object-cover" 
                                 alt={r.fileName}
-                                onLoad={(e) => {
-                                  // Optional: Revoke URL after load if memory is an issue, 
-                                  // but for snapshots it's easier to keep them.
-                                }}
                              />
                           ) : (
                              <ImageIcon className="w-12 h-12 text-slate-300" />
                           )}
+                          <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <ZoomIn className="text-white w-8 h-8" />
+                          </div>
                        </div>
                        <div className="p-3 bg-white">
                           <p className="text-[10px] truncate font-bold uppercase">{r.fileName}</p>
@@ -238,9 +238,6 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                        </div>
                      </Card>
                    ))}
-                   {radiographs.length === 0 && (
-                     <div className="col-span-full py-20 text-center border-2 border-dashed rounded-xl text-muted-foreground">No hay radiografías registradas</div>
-                   )}
                  </div>
                </div>
             </TabsContent>
@@ -277,43 +274,77 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                        </div>
                      </Card>
                    ))}
-                   {consents.length === 0 && (
-                     <div className="col-span-full py-20 text-center border-2 border-dashed rounded-xl text-muted-foreground">Sin documentos archivados</div>
-                   )}
+                 </div>
+               </div>
+            </TabsContent>
+
+            <TabsContent value="odontograms">
+               <div className="space-y-4">
+                 <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm border">
+                   <h3 className="font-bold">Historial de Odontogramas</h3>
+                   <Button asChild className="gap-2">
+                      <Link href={`/patients/${id}/odontogram`}><Plus className="w-4 h-4" /> Nueva Evaluación</Link>
+                   </Button>
+                 </div>
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {odontograms.map((o, idx) => (
+                      <Card key={o.id} className="border-none shadow-sm hover:shadow-md transition-all overflow-hidden">
+                         <CardHeader className="bg-primary/5 p-4 flex flex-row justify-between items-center">
+                            <div>
+                               <p className="text-[10px] uppercase font-bold text-muted-foreground">Evaluación #{odontograms.length - idx}</p>
+                               <p className="font-bold text-sm">{new Date(o.date).toLocaleDateString('es-PE', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+                            </div>
+                            <Activity className="w-5 h-5 text-primary opacity-50" />
+                         </CardHeader>
+                         <CardContent className="p-4 space-y-3">
+                            <div className="text-xs text-muted-foreground line-clamp-3 italic">
+                               {o.diagnostic || "Sin diagnóstico registrado."}
+                            </div>
+                            <Button asChild variant="secondary" size="sm" className="w-full">
+                               <Link href={`/patients/${id}/odontogram`}>Ver / Editar</Link>
+                            </Button>
+                         </CardContent>
+                      </Card>
+                    ))}
+                    {odontograms.length === 0 && (
+                      <div className="col-span-full py-20 text-center border-2 border-dashed rounded-xl text-muted-foreground">No hay evaluaciones previas</div>
+                    )}
                  </div>
                </div>
             </TabsContent>
 
             <TabsContent value="payments">
               <Card className="border-none shadow-sm p-6">
-                 <h3 className="text-xl font-bold mb-6">Estado de Cuenta</h3>
+                 <h3 className="text-xl font-bold mb-6">Estado de Cuenta Detallado</h3>
                  <Table>
-                   <TableHeader>
+                   <TableHeader className="bg-muted/50">
                      <TableRow>
-                       <TableHead>Fecha</TableHead>
+                       <TableHead>Fecha / Hora</TableHead>
                        <TableHead>Tratamiento</TableHead>
-                       <TableHead>Costo</TableHead>
+                       <TableHead>Costo Total</TableHead>
                        <TableHead>Abonado</TableHead>
                        <TableHead>Saldo</TableHead>
+                       <TableHead>Estado</TableHead>
                      </TableRow>
                    </TableHeader>
                    <TableBody>
                      {payments.map(p => (
                        <TableRow key={p.id}>
-                         <TableCell>{p.date}</TableCell>
+                         <TableCell>
+                            <div className="text-sm font-medium">{p.date}</div>
+                            <div className="text-[10px] text-muted-foreground">{p.time}</div>
+                         </TableCell>
                          <TableCell className="text-xs font-bold uppercase">{p.treatmentName}</TableCell>
                          <TableCell>S/. {p.totalCost.toFixed(2)}</TableCell>
                          <TableCell className="text-emerald-600 font-bold">S/. {p.totalPaid.toFixed(2)}</TableCell>
+                         <TableCell className="font-bold">S/. {p.balance.toFixed(2)}</TableCell>
                          <TableCell>
                            <Badge variant={p.balance > 0 ? 'outline' : 'default'} className={p.balance > 0 ? 'text-amber-600 border-amber-600' : 'bg-emerald-500'}>
-                             S/. {p.balance.toFixed(2)}
+                             {p.balance > 0 ? 'PENDIENTE' : 'CANCELADO'}
                            </Badge>
                          </TableCell>
                        </TableRow>
                      ))}
-                     {payments.length === 0 && (
-                       <TableRow><TableCell colSpan={5} className="text-center py-10 text-muted-foreground">No se registran deudas o pagos</TableCell></TableRow>
-                     )}
                    </TableBody>
                  </Table>
               </Card>
@@ -321,7 +352,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
 
             <TabsContent value="appointments">
                <Card className="border-none shadow-sm p-6">
-                  <h3 className="text-xl font-bold mb-6">Historial de Citas</h3>
+                  <h3 className="text-xl font-bold mb-6">Historial de Visitas</h3>
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -340,15 +371,24 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                           <TableCell className="text-xs italic">{a.observations || '-'}</TableCell>
                         </TableRow>
                       ))}
-                      {appointments.length === 0 && (
-                        <TableRow><TableCell colSpan={4} className="text-center py-10 text-muted-foreground">Sin citas programadas</TableCell></TableRow>
-                      )}
                     </TableBody>
                   </Table>
                </Card>
             </TabsContent>
           </Tabs>
         </div>
+
+        {/* Zoomed Image Modal */}
+        <Dialog open={!!zoomedImage} onOpenChange={() => setZoomedImage(null)}>
+           <DialogContent className="max-w-[90vw] h-[90vh] flex items-center justify-center p-0 overflow-hidden bg-black/95">
+              <Button variant="ghost" size="icon" className="absolute top-4 right-4 text-white z-50 bg-black/50 hover:bg-black" onClick={() => setZoomedImage(null)}>
+                <X className="w-6 h-6" />
+              </Button>
+              {zoomedImage && (
+                <img src={zoomedImage} className="max-w-full max-h-full object-contain" alt="Radiografía" />
+              )}
+           </DialogContent>
+        </Dialog>
       </AppLayout>
     </AuthProvider>
   );

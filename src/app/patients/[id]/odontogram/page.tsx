@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, use } from 'react';
@@ -15,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 
 // FDI quadrants
 const quad1 = [18, 17, 16, 15, 14, 13, 12, 11];
@@ -101,6 +101,7 @@ function OdontogramContent({ id }: { id: string }) {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [teethData, setTeethData] = useState<Record<number, any>>({});
   const [selectedTool, setSelectedTool] = useState<string>('caries');
+  const [diagnostic, setDiagnostic] = useState('');
   
   const [customTools, setCustomTools] = useState([
     { id: 'caries', label: 'Caries', color: 'bg-red-500' },
@@ -123,6 +124,7 @@ function OdontogramContent({ id }: { id: string }) {
       const patientOdontograms = ods.filter(o => o.patientId === id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       if (patientOdontograms.length > 0) {
         setTeethData(patientOdontograms[0].data);
+        setDiagnostic(patientOdontograms[0].diagnostic || '');
       }
     };
     load();
@@ -142,9 +144,16 @@ function OdontogramContent({ id }: { id: string }) {
   };
 
   const handleSave = async () => {
-    const od: Odontogram = { id: crypto.randomUUID(), patientId: id, data: teethData, date: new Date().toISOString() };
+    // Every save is a NEW record to preserve history
+    const od: Odontogram = { 
+      id: crypto.randomUUID(), 
+      patientId: id, 
+      data: teethData, 
+      diagnostic: diagnostic,
+      date: new Date().toISOString() 
+    };
     await db.put('odontograms', od);
-    toast({ title: "Odontograma Guardado", description: "El registro dental se ha actualizado con éxito." });
+    toast({ title: "Odontograma Guardado", description: "Se ha generado una nueva versión en el historial." });
   };
 
   const handlePrint = () => {
@@ -298,6 +307,19 @@ function OdontogramContent({ id }: { id: string }) {
               </div>
             </div>
           </CardContent>
+        </Card>
+
+        {/* Diagnostic Field */}
+        <Card className="print:border-none print:shadow-none border-none shadow-sm">
+           <CardHeader><CardTitle className="text-lg">Diagnóstico del Odontograma</CardTitle></CardHeader>
+           <CardContent>
+              <Textarea 
+                placeholder="Escriba aquí los hallazgos clínicos y el diagnóstico actual..." 
+                className="min-h-[120px]"
+                value={diagnostic}
+                onChange={e => setDiagnostic(e.target.value)}
+              />
+           </CardContent>
         </Card>
 
         {/* Legend */}
