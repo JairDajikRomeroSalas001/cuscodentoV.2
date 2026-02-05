@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { AuthProvider } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { db, Patient, User } from '@/lib/db';
@@ -9,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import { Card } from '@/components/ui/card';
-import { UserPlus, Search, Eye, Camera, X } from 'lucide-react';
+import { UserPlus, Search, Eye, Camera } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -93,7 +92,8 @@ function PatientsContent() {
 
   const filteredPatients = patients.filter(p => 
     p.names.toLowerCase().includes(search.toLowerCase()) || 
-    p.lastNames.toLowerCase().includes(search.toLowerCase())
+    p.lastNames.toLowerCase().includes(search.toLowerCase()) ||
+    p.dni.includes(search)
   );
 
   return (
@@ -102,28 +102,25 @@ function PatientsContent() {
         <div className="flex justify-between items-center">
           <div>
             <h2 className="text-3xl font-bold text-primary">Pacientes</h2>
-            <p className="text-muted-foreground mt-1">Historial Clínico Digitalizado</p>
+            <p className="text-muted-foreground mt-1">Gestión de Historial Clínico Digital</p>
           </div>
           <Dialog open={isRegisterOpen} onOpenChange={setIsRegisterOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2 h-12">
                 <UserPlus className="w-5 h-5" />
-                Registrar Paciente & Historia
+                Nuevo Paciente
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[95vw] md:max-w-[900px] h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-[95vw] md:max-w-[1000px] h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Registro Integral de Paciente</DialogTitle>
+                <DialogTitle>Registro de Paciente e Historia Clínica</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleRegister} className="grid grid-cols-1 md:grid-cols-2 gap-8 py-4">
-                {/* Datos Personales */}
                 <div className="space-y-4">
-                  <h3 className="font-bold text-lg border-b pb-2 flex items-center gap-2 text-primary">
-                    <UserPlus className="w-5 h-5" /> Datos del Paciente
-                  </h3>
+                  <h3 className="font-bold text-lg border-b pb-2 flex items-center gap-2 text-primary">Datos Personales</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="dni">DNI (8 dígitos) - Opcional</Label>
+                      <Label htmlFor="dni">DNI (Opcional, autocompleta 0 si vacío)</Label>
                       <Input id="dni" value={newPatient.dni} onChange={e => setNewPatient({...newPatient, dni: e.target.value.slice(0, 8)})} maxLength={8} placeholder="00000000" />
                     </div>
                     <div className="space-y-2">
@@ -147,7 +144,7 @@ function PatientsContent() {
                       <Input id="address" value={newPatient.address} onChange={e => setNewPatient({...newPatient, address: e.target.value})} required />
                     </div>
                     <div className="space-y-2 col-span-2">
-                      <Label>Foto del Paciente</Label>
+                      <Label>Foto (Opcional)</Label>
                       <div className="flex items-center gap-4">
                         <div className="w-20 h-20 rounded-lg bg-muted border flex items-center justify-center overflow-hidden">
                           {photoPreview ? <img src={photoPreview} className="w-full h-full object-cover" /> : <Camera className="w-8 h-8 opacity-20" />}
@@ -158,18 +155,15 @@ function PatientsContent() {
                   </div>
                 </div>
 
-                {/* Historia Clínica */}
                 <div className="space-y-4">
-                  <h3 className="font-bold text-lg border-b pb-2 flex items-center gap-2 text-primary">
-                    <Eye className="w-5 h-5" /> Historia Clínica Inicial
-                  </h3>
+                  <h3 className="font-bold text-lg border-b pb-2 flex items-center gap-2 text-primary">Anamnesis / Historia</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="flex items-center justify-between p-2 border rounded-md">
-                      <Label className="text-xs">Bajo tratamiento médico</Label>
+                      <Label className="text-xs">Bajo tratamiento</Label>
                       <Switch checked={newPatient.underTreatment} onCheckedChange={v => setNewPatient({...newPatient, underTreatment: v})} />
                     </div>
                     <div className="flex items-center justify-between p-2 border rounded-md">
-                      <Label className="text-xs">Propenso a hemorragia</Label>
+                      <Label className="text-xs">Hemorragias</Label>
                       <Switch checked={newPatient.proneToBleeding} onCheckedChange={v => setNewPatient({...newPatient, proneToBleeding: v})} />
                     </div>
                     <div className="flex items-center justify-between p-2 border rounded-md">
@@ -181,24 +175,24 @@ function PatientsContent() {
                       <Switch checked={newPatient.diabetic} onCheckedChange={v => setNewPatient({...newPatient, diabetic: v})} />
                     </div>
                     <div className="flex items-center justify-between p-2 border rounded-md col-span-2">
-                      <Label className="text-xs">¿Está embarazada?</Label>
+                      <Label className="text-xs">¿Embarazada?</Label>
                       <Switch checked={newPatient.pregnant} onCheckedChange={v => setNewPatient({...newPatient, pregnant: v})} />
                     </div>
                     <div className="col-span-2 space-y-2">
                       <div className="flex items-center justify-between p-2 border rounded-md">
-                        <Label className="text-xs font-bold">Alérgico a medicamentos</Label>
+                        <Label className="text-xs font-bold text-red-600">Alérgico a medicamentos</Label>
                         <Switch checked={newPatient.allergicToMeds} onCheckedChange={v => setNewPatient({...newPatient, allergicToMeds: v})} />
                       </div>
                       {newPatient.allergicToMeds && (
-                        <Input placeholder="Especifique medicamentos..." value={newPatient.allergiesDetail} onChange={e => setNewPatient({...newPatient, allergiesDetail: e.target.value})} />
+                        <Input placeholder="¿A qué medicamentos?" value={newPatient.allergiesDetail} onChange={e => setNewPatient({...newPatient, allergiesDetail: e.target.value})} />
                       )}
                     </div>
                     <div className="col-span-2 space-y-2">
-                      <Label>Motivo de la consulta</Label>
+                      <Label>Motivo de consulta</Label>
                       <Input value={newPatient.consultationReason} onChange={e => setNewPatient({...newPatient, consultationReason: e.target.value})} required />
                     </div>
                     <div className="col-span-2 space-y-2">
-                      <Label>Diagnóstico Inicial</Label>
+                      <Label>Diagnóstico</Label>
                       <Textarea value={newPatient.diagnostic} onChange={e => setNewPatient({...newPatient, diagnostic: e.target.value})} />
                     </div>
                     <div className="col-span-2 space-y-2">
@@ -208,21 +202,17 @@ function PatientsContent() {
                     <div className="col-span-2 space-y-2">
                       <Label>Atendido por</Label>
                       <Select onValueChange={v => setNewPatient({...newPatient, attendedBy: v})}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccione Doctor" />
-                        </SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Seleccione Doctor" /></SelectTrigger>
                         <SelectContent>
-                          {users.map(u => (
-                            <SelectItem key={u.id} value={u.username}>{u.username}</SelectItem>
-                          ))}
+                          {users.map(u => <SelectItem key={u.id} value={u.username}>{u.username}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                 </div>
 
-                <DialogFooter className="col-span-full pt-6">
-                  <Button type="submit" className="w-full h-12 text-lg">Guardar Registro Completo</Button>
+                <DialogFooter className="col-span-full pt-6 border-t mt-4">
+                  <Button type="submit" className="w-full h-12 text-lg">Guardar Paciente</Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -233,7 +223,7 @@ function PatientsContent() {
           <div className="relative mb-6">
             <Search className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
             <Input 
-              placeholder="Buscar por nombres o apellidos..." 
+              placeholder="Buscar por DNI, Nombres o Apellidos..." 
               className="pl-10 h-11"
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -247,7 +237,6 @@ function PatientsContent() {
                   <TableHead>DNI</TableHead>
                   <TableHead>Paciente</TableHead>
                   <TableHead>Celular</TableHead>
-                  <TableHead>Registro</TableHead>
                   <TableHead>Atendido por</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
@@ -259,13 +248,11 @@ function PatientsContent() {
                       <TableCell className="font-medium">{p.dni}</TableCell>
                       <TableCell className="font-bold">{p.lastNames}, {p.names}</TableCell>
                       <TableCell>{p.phone}</TableCell>
-                      <TableCell>{p.registrationDate}</TableCell>
                       <TableCell>Dr. {p.attendedBy}</TableCell>
                       <TableCell className="text-right">
                         <Button asChild variant="ghost" size="sm" className="gap-2">
                           <Link href={`/patients/${p.id}`}>
-                            <Eye className="w-4 h-4" />
-                            Ver Historial
+                            <Eye className="w-4 h-4" /> Historial
                           </Link>
                         </Button>
                       </TableCell>
@@ -273,9 +260,8 @@ function PatientsContent() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-20 text-muted-foreground">
-                       <Search className="w-12 h-12 mx-auto mb-4 opacity-10" />
-                       No se encontraron pacientes registrados
+                    <TableCell colSpan={5} className="text-center py-20 text-muted-foreground">
+                       No hay pacientes que coincidan con la búsqueda
                     </TableCell>
                   </TableRow>
                 )}

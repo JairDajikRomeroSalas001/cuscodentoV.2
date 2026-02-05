@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, use } from 'react';
@@ -10,7 +9,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Calendar, CreditCard, Stethoscope, Image as ImageIcon, FileText, Activity, ChevronLeft, Plus, Eye, History, Upload, Trash2 } from 'lucide-react';
+import { Calendar, CreditCard, Stethoscope, Image as ImageIcon, FileText, Activity, ChevronLeft, Plus, Eye, History, Upload, Trash2, Download } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 
@@ -18,7 +17,6 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   const { id } = use(params);
   const { toast } = useToast();
   const [patient, setPatient] = useState<Patient | null>(null);
-  const [patientTreatments, setPatientTreatments] = useState<any[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [radiographs, setRadiographs] = useState<Radiograph[]>([]);
   const [consents, setConsents] = useState<Consent[]>([]);
@@ -32,15 +30,6 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     const p = await db.getById<Patient>('patients', id);
     if (!p) return;
     setPatient(p);
-
-    const pts = await db.getAll<PatientTreatment>('patient_treatments');
-    const trs = await db.getAll<Treatment>('treatments');
-    
-    const relevantPts = (pts || []).filter(pt => pt.patientId === id).map(pt => ({
-      ...pt,
-      treatmentName: trs.find(t => t.id === pt.treatmentId)?.name || 'Tratamiento Desconocido'
-    }));
-    setPatientTreatments(relevantPts);
 
     const allPayments = await db.getAll<Payment>('payments');
     setPayments((allPayments || []).filter(pay => pay.patientId === id));
@@ -59,23 +48,29 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const data: any = {
-        id: crypto.randomUUID(),
-        patientId: id,
-        fileName: file.name,
-        fileType: file.type,
-        fileBlob: file, // IDB soporta Blobs directamente
-        date: new Date().toLocaleDateString('es-PE'),
-      };
-
-      const store = type === 'radiograph' ? 'radiographs' : 'consents';
-      await db.put(store, data);
-      toast({ title: "Archivo subido", description: "El documento se guardó correctamente en la historia clínica." });
-      loadAll();
+    // IndexedDB soporta Blobs directamente
+    const data: any = {
+      id: crypto.randomUUID(),
+      patientId: id,
+      fileName: file.name,
+      fileType: file.type,
+      fileBlob: file, 
+      date: new Date().toLocaleDateString('es-PE'),
     };
-    reader.readAsArrayBuffer(file);
+
+    const store = type === 'radiograph' ? 'radiographs' : 'consents';
+    await db.put(store, data);
+    toast({ title: "Archivo subido", description: "El documento se guardó correctamente." });
+    loadAll();
+  };
+
+  const downloadFile = (fileBlob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(fileBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const deleteFile = async (store: 'radiographs' | 'consents', fileId: string) => {
@@ -100,8 +95,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                 <h2 className="text-3xl font-bold text-primary">{patient.lastNames}, {patient.names}</h2>
                 <div className="flex gap-4 mt-1">
                   <Badge variant="outline" className="border-primary text-primary">DNI: {patient.dni}</Badge>
-                  <Badge variant="outline" className="border-primary text-primary">{patient.age || 'N/A'} años</Badge>
-                  <span className="text-sm text-muted-foreground">Paciente desde {patient.registrationDate}</span>
+                  <span className="text-sm text-muted-foreground">Paciente registrado el {patient.registrationDate}</span>
                 </div>
               </div>
             </div>
@@ -132,6 +126,10 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                      <div className="flex flex-col gap-1">
                         <span className="text-[10px] text-muted-foreground uppercase font-bold">Teléfono</span>
                         <span className="font-medium text-primary">{patient.phone}</span>
+                     </div>
+                     <div className="flex flex-col gap-1">
+                        <span className="text-[10px] text-muted-foreground uppercase font-bold">Correo</span>
+                        <span className="font-medium">{patient.email || '-'}</span>
                      </div>
                      <div className="flex flex-col gap-1">
                         <span className="text-[10px] text-muted-foreground uppercase font-bold">Dirección</span>
@@ -207,14 +205,19 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
                    {radiographs.map(r => (
                      <Card key={r.id} className="overflow-hidden group relative border-none shadow-sm hover:shadow-md transition-all">
-                       <div className="aspect-square bg-slate-900 flex items-center justify-center">
-                          <ImageIcon className="w-12 h-12 text-slate-800" />
+                       <div className="aspect-square bg-slate-100 flex items-center justify-center overflow-hidden">
+                          {r.fileType.startsWith('image/') ? (
+                             <img src={URL.createObjectURL(r.fileBlob)} className="w-full h-full object-cover" />
+                          ) : (
+                             <ImageIcon className="w-12 h-12 text-slate-300" />
+                          )}
                        </div>
                        <div className="p-3 bg-white">
                           <p className="text-[10px] truncate font-bold uppercase">{r.fileName}</p>
                           <p className="text-[9px] text-muted-foreground">{r.date}</p>
                        </div>
-                       <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                       <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                         <Button variant="secondary" size="icon" className="h-7 w-7" onClick={() => downloadFile(r.fileBlob, r.fileName)}><Download className="w-3 h-3" /></Button>
                          <Button variant="destructive" size="icon" className="h-7 w-7" onClick={() => deleteFile('radiographs', r.id)}><Trash2 className="w-3 h-3" /></Button>
                        </div>
                      </Card>
@@ -231,7 +234,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                  <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm">
                    <h3 className="font-bold">Documentos Firmados</h3>
                    <label className="cursor-pointer">
-                      <Button asChild variant="outline" className="gap-2"><span className="flex items-center gap-2"><Upload className="w-4 h-4" /> Subir PDF</span></Button>
+                      <Button asChild variant="outline" className="gap-2"><span className="flex items-center gap-2"><Upload className="w-4 h-4" /> Subir Archivo</span></Button>
                       <input type="file" className="hidden" accept=".pdf,image/*" onChange={(e) => handleFileUpload('consent', e)} />
                    </label>
                  </div>
@@ -246,13 +249,13 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                           </div>
                        </div>
                        <div className="flex gap-2">
-                          <Button variant="ghost" size="sm">Ver</Button>
+                          <Button variant="ghost" size="sm" onClick={() => downloadFile(c.fileBlob, c.fileName)}>Descargar</Button>
                           <Button variant="ghost" size="icon" className="text-destructive opacity-0 group-hover:opacity-100" onClick={() => deleteFile('consents', c.id)}><Trash2 className="w-4 h-4" /></Button>
                        </div>
                      </Card>
                    ))}
                    {consents.length === 0 && (
-                     <div className="col-span-full py-20 text-center border-2 border-dashed rounded-xl text-muted-foreground">Sin consentimientos archivados</div>
+                     <div className="col-span-full py-20 text-center border-2 border-dashed rounded-xl text-muted-foreground">Sin documentos archivados</div>
                    )}
                  </div>
                </div>
@@ -260,7 +263,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
 
             <TabsContent value="payments">
               <Card className="border-none shadow-sm p-6">
-                 <h3 className="text-xl font-bold mb-6">Estado de Cuenta del Paciente</h3>
+                 <h3 className="text-xl font-bold mb-6">Estado de Cuenta</h3>
                  <Table>
                    <TableHeader>
                      <TableRow>

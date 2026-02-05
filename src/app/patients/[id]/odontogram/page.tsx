@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, use } from 'react';
@@ -12,12 +11,19 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-// FDI quadrants
+// FDI quadrants - Permanent
 const quad1 = [18, 17, 16, 15, 14, 13, 12, 11];
 const quad2 = [21, 22, 23, 24, 25, 26, 27, 28];
 const quad4 = [48, 47, 46, 45, 44, 43, 42, 41];
 const quad3 = [31, 32, 33, 34, 35, 36, 37, 38];
+
+// FDI quadrants - Deciduous (Children)
+const quad5 = [55, 54, 53, 52, 51];
+const quad6 = [61, 62, 63, 64, 65];
+const quad8 = [85, 84, 83, 82, 81];
+const quad7 = [71, 72, 73, 74, 75];
 
 const CONDITIONS = [
   { id: 'healthy', label: 'Sano', color: 'bg-white' },
@@ -31,7 +37,6 @@ const GLOBAL_STATES = [
   { id: 'bridge', label: 'Póntico', color: 'bg-purple-400' },
 ];
 
-// Individual tooth component with 5 surfaces
 function InteractiveTooth({ 
   id, 
   data, 
@@ -68,50 +73,16 @@ function InteractiveTooth({
   return (
     <div className="flex flex-col items-center gap-1 group">
       <span className="text-[10px] font-bold text-muted-foreground">{id}</span>
-      <div className="relative w-12 h-12 flex items-center justify-center">
-        {/* Odontogram Graphical Tooth (5 surfaces) */}
-        <svg viewBox="0 0 100 100" className="w-10 h-10 overflow-visible">
-          {/* Top (Vestibular) */}
-          <path 
-            d="M 10 10 L 90 10 L 70 30 L 30 30 Z" 
-            className={cn("transition-colors cursor-pointer hover:opacity-80", getSurfaceColor('top'))}
-            onClick={() => handleClick('top')}
-          />
-          {/* Bottom (Lingual/Palatal) */}
-          <path 
-            d="M 30 70 L 70 70 L 90 90 L 10 90 Z" 
-            className={cn("transition-colors cursor-pointer hover:opacity-80", getSurfaceColor('bottom'))}
-            onClick={() => handleClick('bottom')}
-          />
-          {/* Left (Mesial/Distal) */}
-          <path 
-            d="M 10 10 L 30 30 L 30 70 L 10 90 Z" 
-            className={cn("transition-colors cursor-pointer hover:opacity-80", getSurfaceColor('left'))}
-            onClick={() => handleClick('left')}
-          />
-          {/* Right (Distal/Mesial) */}
-          <path 
-            d="M 90 10 L 90 90 L 70 70 L 70 30 Z" 
-            className={cn("transition-colors cursor-pointer hover:opacity-80", getSurfaceColor('right'))}
-            onClick={() => handleClick('right')}
-          />
-          {/* Center (Oclusal) */}
-          <rect 
-            x="30" y="30" width="40" height="40" 
-            className={cn("transition-colors cursor-pointer hover:opacity-80", getSurfaceColor('center'))}
-            onClick={() => handleClick('center')}
-          />
-
-          {/* Overlays for global states */}
-          {globalState === 'missing' && (
-            <path d="M 0 0 L 100 100 M 100 0 L 0 100" className="stroke-red-600 stroke-[5px]" />
-          )}
-          {globalState === 'crown' && (
-            <circle cx="50" cy="50" r="45" className="fill-none stroke-amber-500 stroke-[4px]" />
-          )}
-          {globalState === 'bridge' && (
-            <line x1="0" y1="50" x2="100" y2="50" className="stroke-purple-600 stroke-[8px] opacity-60" />
-          )}
+      <div className="relative w-10 h-10 flex items-center justify-center">
+        <svg viewBox="0 0 100 100" className="w-8 h-8 overflow-visible">
+          <path d="M 10 10 L 90 10 L 70 30 L 30 30 Z" className={cn("transition-colors cursor-pointer hover:opacity-80", getSurfaceColor('top'))} onClick={() => handleClick('top')} />
+          <path d="M 30 70 L 70 70 L 90 90 L 10 90 Z" className={cn("transition-colors cursor-pointer hover:opacity-80", getSurfaceColor('bottom'))} onClick={() => handleClick('bottom')} />
+          <path d="M 10 10 L 30 30 L 30 70 L 10 90 Z" className={cn("transition-colors cursor-pointer hover:opacity-80", getSurfaceColor('left'))} onClick={() => handleClick('left')} />
+          <path d="M 90 10 L 90 90 L 70 70 L 70 30 Z" className={cn("transition-colors cursor-pointer hover:opacity-80", getSurfaceColor('right'))} onClick={() => handleClick('right')} />
+          <rect x="30" y="30" width="40" height="40" className={cn("transition-colors cursor-pointer hover:opacity-80", getSurfaceColor('center'))} onClick={() => handleClick('center')} />
+          {globalState === 'missing' && <path d="M 0 0 L 100 100 M 100 0 L 0 100" className="stroke-red-600 stroke-[5px]" />}
+          {globalState === 'crown' && <circle cx="50" cy="50" r="45" className="fill-none stroke-amber-500 stroke-[4px]" />}
+          {globalState === 'bridge' && <line x1="0" y1="50" x2="100" y2="50" className="stroke-purple-600 stroke-[8px] opacity-60" />}
         </svg>
       </div>
     </div>
@@ -143,37 +114,20 @@ export default function OdontogramDetailPage({ params }: { params: Promise<{ id:
   const handleSurfaceClick = (toothId: number, surface: string) => {
     const currentTooth = teethData[toothId] || { surfaces: {}, globalState: 'none' };
     const currentSurfaceStatus = currentTooth.surfaces[surface] || 'healthy';
-    
     const newStatus = currentSurfaceStatus === selectedTool ? 'healthy' : selectedTool;
-    
-    setTeethData({
-      ...teethData,
-      [toothId]: {
-        ...currentTooth,
-        surfaces: { ...currentTooth.surfaces, [surface]: newStatus }
-      }
-    });
+    setTeethData({ ...teethData, [toothId]: { ...currentTooth, surfaces: { ...currentTooth.surfaces, [surface]: newStatus } } });
   };
 
   const handleStateToggle = (toothId: number, state: string) => {
     const currentTooth = teethData[toothId] || { surfaces: {}, globalState: 'none' };
     const newGlobalState = currentTooth.globalState === state ? 'none' : state;
-
-    setTeethData({
-      ...teethData,
-      [toothId]: { ...currentTooth, globalState: newGlobalState }
-    });
+    setTeethData({ ...teethData, [toothId]: { ...currentTooth, globalState: newGlobalState } });
   };
 
   const handleSave = async () => {
-    const od: Odontogram = {
-      id: crypto.randomUUID(),
-      patientId: id,
-      data: teethData,
-      date: new Date().toISOString(),
-    };
+    const od: Odontogram = { id: crypto.randomUUID(), patientId: id, data: teethData, date: new Date().toISOString() };
     await db.put('odontograms', od);
-    toast({ title: "Odontograma Guardado", description: "El registro dental se ha actualizado." });
+    toast({ title: "Odontograma Guardado", description: "El registro dental se ha actualizado con éxito." });
   };
 
   if (!patient) return null;
@@ -187,11 +141,11 @@ export default function OdontogramDetailPage({ params }: { params: Promise<{ id:
               <Button asChild variant="ghost" size="icon"><Link href={`/patients/${id}`}><ChevronLeft /></Link></Button>
               <div>
                 <h2 className="text-3xl font-bold text-primary">Odontograma Profesional</h2>
-                <p className="text-muted-foreground">Paciente: <span className="font-bold text-foreground">{patient.lastNames}, {patient.names}</span></p>
+                <p className="text-muted-foreground">Paciente: <span className="font-bold text-foreground">{patient.lastNames}, {patient.names}</span> (DNI: {patient.dni})</p>
               </div>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => { if(confirm("¿Limpiar?")) setTeethData({}); }}><RotateCcw className="w-4 h-4 mr-2" /> Reiniciar</Button>
+              <Button variant="outline" onClick={() => { if(confirm("¿Limpiar todo el odontograma?")) setTeethData({}); }}><RotateCcw className="w-4 h-4 mr-2" /> Reiniciar</Button>
               <Button onClick={handleSave} className="gap-2"><Save className="w-5 h-5" /> Guardar Estado</Button>
             </div>
           </div>
@@ -202,82 +156,101 @@ export default function OdontogramDetailPage({ params }: { params: Promise<{ id:
                 <span className="text-sm font-bold text-muted-foreground mr-2">Herramientas:</span>
                 <div className="flex flex-wrap gap-2">
                   {CONDITIONS.map(c => (
-                    <Button 
-                      key={c.id} 
-                      size="sm" 
-                      variant={selectedTool === c.id ? 'default' : 'outline'}
-                      onClick={() => setSelectedTool(c.id)}
-                      className="gap-2"
-                    >
-                      <div className={cn("w-3 h-3 rounded-full border", c.color)} />
-                      {c.label}
+                    <Button key={c.id} size="sm" variant={selectedTool === c.id ? 'default' : 'outline'} onClick={() => setSelectedTool(c.id)} className="gap-2">
+                      <div className={cn("w-3 h-3 rounded-full border", c.color)} /> {c.label}
                     </Button>
                   ))}
                   <div className="w-[1px] h-6 bg-slate-300 mx-2" />
                   {GLOBAL_STATES.map(s => (
-                    <Button 
-                      key={s.id} 
-                      size="sm" 
-                      variant={selectedTool === s.id ? 'default' : 'outline'}
-                      onClick={() => setSelectedTool(s.id)}
-                      className="gap-2"
-                    >
-                      <div className={cn("w-3 h-3 rounded-full border", s.color)} />
-                      {s.label}
+                    <Button key={s.id} size="sm" variant={selectedTool === s.id ? 'default' : 'outline'} onClick={() => setSelectedTool(s.id)} className="gap-2">
+                      <div className={cn("w-3 h-3 rounded-full border", s.color)} /> {s.label}
                     </Button>
                   ))}
                 </div>
               </div>
             </CardHeader>
             <CardContent className="p-8">
-              <div className="space-y-12">
-                {/* Upper Arc */}
-                <div className="flex flex-col items-center gap-4">
-                  <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arcada Superior</h4>
-                  <div className="flex justify-center items-center gap-1 overflow-x-auto pb-4 w-full">
-                    <div className="flex gap-1 md:gap-3">
-                      {quad1.map(t => <InteractiveTooth key={t} id={t} data={teethData[t]} selectedTool={selectedTool} onSurfaceClick={handleSurfaceClick} onStateToggle={handleStateToggle} />)}
-                    </div>
-                    <div className="w-0.5 h-16 bg-primary/20 mx-4" />
-                    <div className="flex gap-1 md:gap-3">
-                      {quad2.map(t => <InteractiveTooth key={t} id={t} data={teethData[t]} selectedTool={selectedTool} onSurfaceClick={handleSurfaceClick} onStateToggle={handleStateToggle} />)}
+              <Tabs defaultValue="permanent" className="w-full">
+                <div className="flex justify-center mb-8">
+                  <TabsList>
+                    <TabsTrigger value="permanent">Permanente (Adultos)</TabsTrigger>
+                    <TabsTrigger value="deciduous">Decidua (Niños)</TabsTrigger>
+                  </TabsList>
+                </div>
+                
+                <TabsContent value="permanent" className="space-y-12 animate-in fade-in duration-300">
+                  <div className="flex flex-col items-center gap-6">
+                    <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arcada Superior Permanente</h4>
+                    <div className="flex justify-center items-center gap-1 overflow-x-auto pb-4 w-full scrollbar-hide">
+                      <div className="flex gap-1 md:gap-2">
+                        {quad1.map(t => <InteractiveTooth key={t} id={t} data={teethData[t]} selectedTool={selectedTool} onSurfaceClick={handleSurfaceClick} onStateToggle={handleStateToggle} />)}
+                      </div>
+                      <div className="w-0.5 h-12 bg-primary/20 mx-4" />
+                      <div className="flex gap-1 md:gap-2">
+                        {quad2.map(t => <InteractiveTooth key={t} id={t} data={teethData[t]} selectedTool={selectedTool} onSurfaceClick={handleSurfaceClick} onStateToggle={handleStateToggle} />)}
+                      </div>
                     </div>
                   </div>
-                </div>
+                  <div className="flex flex-col items-center gap-6">
+                    <div className="flex justify-center items-center gap-1 overflow-x-auto pb-4 w-full scrollbar-hide">
+                      <div className="flex gap-1 md:gap-2">
+                        {quad4.map(t => <InteractiveTooth key={t} id={t} data={teethData[t]} selectedTool={selectedTool} onSurfaceClick={handleSurfaceClick} onStateToggle={handleStateToggle} />)}
+                      </div>
+                      <div className="w-0.5 h-12 bg-primary/20 mx-4" />
+                      <div className="flex gap-1 md:gap-2">
+                        {quad3.map(t => <InteractiveTooth key={t} id={t} data={teethData[t]} selectedTool={selectedTool} onSurfaceClick={handleSurfaceClick} onStateToggle={handleStateToggle} />)}
+                      </div>
+                    </div>
+                    <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arcada Inferior Permanente</h4>
+                  </div>
+                </TabsContent>
 
-                {/* Lower Arc */}
-                <div className="flex flex-col items-center gap-4">
-                  <div className="flex justify-center items-center gap-1 overflow-x-auto pb-4 w-full">
-                    <div className="flex gap-1 md:gap-3">
-                      {quad4.map(t => <InteractiveTooth key={t} id={t} data={teethData[t]} selectedTool={selectedTool} onSurfaceClick={handleSurfaceClick} onStateToggle={handleStateToggle} />)}
-                    </div>
-                    <div className="w-0.5 h-16 bg-primary/20 mx-4" />
-                    <div className="flex gap-1 md:gap-3">
-                      {quad3.map(t => <InteractiveTooth key={t} id={t} data={teethData[t]} selectedTool={selectedTool} onSurfaceClick={handleSurfaceClick} onStateToggle={handleStateToggle} />)}
+                <TabsContent value="deciduous" className="space-y-12 animate-in fade-in duration-300">
+                  <div className="flex flex-col items-center gap-6">
+                    <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arcada Superior Decidua</h4>
+                    <div className="flex justify-center items-center gap-1 overflow-x-auto pb-4 w-full">
+                      <div className="flex gap-1 md:gap-4">
+                        {quad5.map(t => <InteractiveTooth key={t} id={t} data={teethData[t]} selectedTool={selectedTool} onSurfaceClick={handleSurfaceClick} onStateToggle={handleStateToggle} />)}
+                      </div>
+                      <div className="w-0.5 h-12 bg-primary/20 mx-4" />
+                      <div className="flex gap-1 md:gap-4">
+                        {quad6.map(t => <InteractiveTooth key={t} id={t} data={teethData[t]} selectedTool={selectedTool} onSurfaceClick={handleSurfaceClick} onStateToggle={handleStateToggle} />)}
+                      </div>
                     </div>
                   </div>
-                  <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arcada Inferior</h4>
-                </div>
-              </div>
+                  <div className="flex flex-col items-center gap-6">
+                    <div className="flex justify-center items-center gap-1 overflow-x-auto pb-4 w-full">
+                      <div className="flex gap-1 md:gap-4">
+                        {quad8.map(t => <InteractiveTooth key={t} id={t} data={teethData[t]} selectedTool={selectedTool} onSurfaceClick={handleSurfaceClick} onStateToggle={handleStateToggle} />)}
+                      </div>
+                      <div className="w-0.5 h-12 bg-primary/20 mx-4" />
+                      <div className="flex gap-1 md:gap-4">
+                        {quad7.map(t => <InteractiveTooth key={t} id={t} data={teethData[t]} selectedTool={selectedTool} onSurfaceClick={handleSurfaceClick} onStateToggle={handleStateToggle} />)}
+                      </div>
+                    </div>
+                    <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arcada Inferior Decidua</h4>
+                  </div>
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card className="p-4 border-none shadow-sm">
+            <Card className="p-4 border-none shadow-sm bg-primary/5">
               <h5 className="font-bold flex items-center gap-2 mb-2"><Info className="w-4 h-4" /> Guía de superficies</h5>
               <div className="text-xs space-y-2 text-muted-foreground">
                 <p>El gráfico representa las 5 superficies del diente:</p>
                 <ul className="list-disc pl-4 grid grid-cols-2">
-                  <li>Superior: Vestibular/Labial</li>
+                  <li>Superior: Vestibular</li>
                   <li>Inferior: Palatino/Lingual</li>
-                  <li>Lateral Int.: Mesial</li>
-                  <li>Lateral Ext.: Distal</li>
+                  <li>Izquierda: Mesial/Distal</li>
+                  <li>Derecha: Distal/Mesial</li>
                   <li>Centro: Oclusal/Incisal</li>
                 </ul>
               </div>
             </Card>
-            <Card className="p-4 border-none shadow-sm bg-primary/5">
-              <h5 className="font-bold mb-2">Resumen Clínico</h5>
+            <Card className="p-4 border-none shadow-sm bg-accent/5">
+              <h5 className="font-bold mb-2">Resumen de Hallazgos</h5>
               <div className="flex flex-wrap gap-2">
                 {CONDITIONS.concat(GLOBAL_STATES).map(tool => {
                   let count = 0;
