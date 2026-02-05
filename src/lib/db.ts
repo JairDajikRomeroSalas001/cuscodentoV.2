@@ -66,6 +66,12 @@ export interface Appointment {
   balance: number;
 }
 
+export interface PaymentHistory {
+  date: string;
+  time: string;
+  amount: number;
+}
+
 export interface Payment {
   id: string;
   patientId: string;
@@ -78,6 +84,7 @@ export interface Payment {
   date: string;
   time: string;
   observations: string;
+  history?: PaymentHistory[];
 }
 
 export interface Radiograph {

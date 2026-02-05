@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, use } from 'react';
@@ -306,7 +305,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
             </TabsContent>
 
             <TabsContent value="payments">
-              <Card className="border-none shadow-sm p-6">
+              <Card className="border-none shadow-sm p-6 overflow-x-auto">
                  <div className="flex justify-between items-center mb-6">
                    <h3 className="text-xl font-bold">Estado de Cuenta y Amortizaciones</h3>
                    <div className="text-right">
@@ -323,6 +322,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                        <TableHead>Pagado</TableHead>
                        <TableHead>Saldo</TableHead>
                        <TableHead>Estado</TableHead>
+                       <TableHead>Historial de Abonos</TableHead>
                      </TableRow>
                    </TableHeader>
                    <TableBody>
@@ -338,10 +338,25 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                              {p.balance > 0 ? 'PENDIENTE' : 'LIQUIDADO'}
                            </Badge>
                          </TableCell>
+                         <TableCell>
+                           <div className="text-[10px] space-y-1 max-h-24 overflow-y-auto">
+                             {p.history && p.history.length > 0 ? p.history.map((h, i) => (
+                               <div key={i} className="flex justify-between gap-4 border-b border-dashed pb-1 last:border-0">
+                                 <span>{h.date}</span>
+                                 <span className="font-bold">S/. {h.amount.toFixed(2)}</span>
+                               </div>
+                             )) : (
+                               <div className="flex justify-between gap-4">
+                                 <span>{p.date}</span>
+                                 <span className="font-bold">S/. {p.totalPaid.toFixed(2)}</span>
+                               </div>
+                             )}
+                           </div>
+                         </TableCell>
                        </TableRow>
                      ))}
                      {payments.length === 0 && (
-                       <TableRow><TableCell colSpan={6} className="text-center py-10 opacity-50">No hay movimientos financieros</TableCell></TableRow>
+                       <TableRow><TableCell colSpan={7} className="text-center py-10 opacity-50">No hay movimientos financieros</TableCell></TableRow>
                      )}
                    </TableBody>
                  </Table>

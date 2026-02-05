@@ -50,13 +50,19 @@ function PaymentsContent() {
     if (editingPayment) {
       const newPaid = editingPayment.totalPaid + newAmo;
       const newBalance = Math.max(0, editingPayment.totalCost - newPaid);
+      const date = new Date().toLocaleDateString('es-PE');
+      const time = new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+
+      const updatedHistory = [...(editingPayment.history || [])];
+      updatedHistory.push({ date, time, amount: newAmo });
 
       const updatedPayment: Payment = {
         ...editingPayment,
         totalPaid: newPaid,
         balance: newBalance,
-        date: new Date().toLocaleDateString('es-PE'),
-        time: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+        date: date,
+        time: time,
+        history: updatedHistory
       };
 
       await db.put('payments', updatedPayment);

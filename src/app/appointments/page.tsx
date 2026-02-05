@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -92,7 +91,7 @@ function AppointmentsContent() {
 
     await db.put('appointments', appointment);
 
-    if (paid > 0) {
+    if (paid > 0 || finalCost > 0) {
       const treatment = treatments.find(t => t.id === form.treatmentId);
       const payment: Payment = {
         id: crypto.randomUUID(),
@@ -106,6 +105,7 @@ function AppointmentsContent() {
         date: form.date,
         time: form.time,
         observations: form.observations,
+        history: paid > 0 ? [{ date: form.date, time: form.time, amount: paid }] : []
       };
       await db.put('payments', payment);
     }
@@ -189,7 +189,7 @@ function AppointmentsContent() {
                   <Select onValueChange={v => setForm({...form, doctorId: v})}>
                     <SelectTrigger><SelectValue placeholder="Seleccione..." /></SelectTrigger>
                     <SelectContent>
-                      {users.map(u => <SelectItem key={u.id} value={u.id}>{u.username}</SelectItem>)}
+                      {users.map(u => <SelectItem key={u.id} value={u.username}>{u.username}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
