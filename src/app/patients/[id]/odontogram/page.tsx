@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 // FDI quadrants
 const quad1 = [18, 17, 16, 15, 14, 13, 12, 11];
@@ -282,7 +283,9 @@ export default function OdontogramDetailPage({ params }: { params: Promise<{ id:
                   let count = 0;
                   Object.values(teethData).forEach((t: any) => {
                     if (t.globalState === tool.id) count++;
-                    Object.values(t.surfaces || {}).forEach(s => { if(s === tool.id) count++; });
+                    if (t.surfaces) {
+                      Object.values(t.surfaces).forEach(s => { if(s === tool.id) count++; });
+                    }
                   });
                   if (count === 0) return null;
                   return (
