@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, use } from 'react';
@@ -5,7 +6,7 @@ import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { db, Patient, Odontogram } from '@/lib/db';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, Save, RotateCcw, Info, Printer, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, Save, RotateCcw, Info, Printer, Plus, Trash2, Edit2 } from 'lucide-react';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -61,6 +62,7 @@ function InteractiveTooth({
     if (tool.color.includes('purple')) return 'fill-purple-400 stroke-purple-600';
     if (tool.color.includes('emerald')) return 'fill-emerald-500 stroke-emerald-700';
     if (tool.color.includes('slate')) return 'fill-slate-800 stroke-slate-900';
+    if (tool.color.includes('pink')) return 'fill-pink-500 stroke-pink-700';
     
     return 'fill-slate-400 stroke-slate-600';
   };
@@ -113,6 +115,7 @@ function OdontogramContent({ id }: { id: string }) {
   ]);
 
   const [newTool, setNewTool] = useState({ label: '', color: 'bg-emerald-500' });
+  const [editingToolId, setEditingToolId] = useState<string | null>(null);
   const [isToolDialogOpen, setIsToolDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -144,7 +147,6 @@ function OdontogramContent({ id }: { id: string }) {
   };
 
   const handleSave = async () => {
-    // Every save is a NEW record to preserve history
     const od: Odontogram = { 
       id: crypto.randomUUID(), 
       patientId: id, 
@@ -160,12 +162,42 @@ function OdontogramContent({ id }: { id: string }) {
     window.print();
   };
 
-  const addTool = () => {
+  const handleReset = () => {
+    if (confirm("¿Estás seguro de que deseas reiniciar todo el odontograma? Se borrarán los hallazgos y el diagnóstico actual.")) {
+      setTeethData({});
+      setDiagnostic('');
+      toast({ title: "Odontograma Reiniciado", description: "Se han limpiado todos los datos del lienzo." });
+    }
+  };
+
+  const saveTool = () => {
     if (!newTool.label) return;
-    const toolId = newTool.label.toLowerCase().replace(/\s/g, '_');
-    setCustomTools([...customTools, { ...newTool, id: toolId }]);
+    
+    if (editingToolId) {
+      setCustomTools(prev => prev.map(t => t.id === editingToolId ? { ...t, label: newTool.label, color: newTool.color } : t));
+      toast({ title: "Herramienta Actualizada" });
+    } else {
+      const toolId = newTool.label.toLowerCase().replace(/\s/g, '_') + '_' + Date.now();
+      setCustomTools([...customTools, { id: toolId, label: newTool.label, color: newTool.color }]);
+      toast({ title: "Herramienta Agregada" });
+    }
+    
     setNewTool({ label: '', color: 'bg-emerald-500' });
+    setEditingToolId(null);
     setIsToolDialogOpen(false);
+  };
+
+  const deleteTool = (toolId: string) => {
+    if (confirm("¿Eliminar esta herramienta de la paleta?")) {
+      setCustomTools(prev => prev.filter(t => t.id !== toolId));
+      if (selectedTool === toolId) setSelectedTool('caries');
+    }
+  };
+
+  const startEditTool = (tool: any) => {
+    setEditingToolId(tool.id);
+    setNewTool({ label: tool.label, color: tool.color });
+    setIsToolDialogOpen(true);
   };
 
   if (!patient) return null;
@@ -207,7 +239,7 @@ function OdontogramContent({ id }: { id: string }) {
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={handlePrint} className="gap-2"><Printer className="w-4 h-4" /> Imprimir</Button>
-            <Button variant="outline" onClick={() => { if(confirm("¿Limpiar todo el odontograma?")) setTeethData({}); }}><RotateCcw className="w-4 h-4 mr-2" /> Reiniciar</Button>
+            <Button variant="outline" onClick={handleReset} className="text-amber-600"><RotateCcw className="w-4 h-4 mr-2" /> Reiniciar</Button>
             <Button onClick={handleSave} className="gap-2"><Save className="w-5 h-5" /> Guardar Estado</Button>
           </div>
         </div>
@@ -218,16 +250,32 @@ function OdontogramContent({ id }: { id: string }) {
               <div className="flex flex-wrap gap-2 items-center">
                 <span className="text-sm font-bold text-muted-foreground mr-2">Herramientas:</span>
                 {customTools.map(c => (
-                  <Button key={c.id} size="sm" variant={selectedTool === c.id ? 'default' : 'outline'} onClick={() => setSelectedTool(c.id)} className="gap-2">
-                    <div className={cn("w-3 h-3 rounded-full border", c.color)} /> {c.label}
-                  </Button>
+                  <div key={c.id} className="relative group flex items-center">
+                    <Button 
+                      size="sm" 
+                      variant={selectedTool === c.id ? 'default' : 'outline'} 
+                      onClick={() => setSelectedTool(c.id)} 
+                      className={cn("gap-2", !['caries', 'filling', 'healthy', 'missing', 'crown', 'bridge'].includes(c.id) && "pr-10")}
+                    >
+                      <div className={cn("w-3 h-3 rounded-full border", c.color)} /> {c.label}
+                    </Button>
+                    {!['caries', 'filling', 'healthy', 'missing', 'crown', 'bridge'].includes(c.id) && (
+                      <div className="absolute right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={(e) => { e.stopPropagation(); startEditTool(c); }} className="p-1 hover:text-primary"><Edit2 className="w-3 h-3" /></button>
+                        <button onClick={(e) => { e.stopPropagation(); deleteTool(c.id); }} className="p-1 hover:text-destructive"><Trash2 className="w-3 h-3" /></button>
+                      </div>
+                    )}
+                  </div>
                 ))}
-                <Dialog open={isToolDialogOpen} onOpenChange={setIsToolDialogOpen}>
+                <Dialog open={isToolDialogOpen} onOpenChange={(val) => {
+                  setIsToolDialogOpen(val);
+                  if (!val) { setEditingToolId(null); setNewTool({ label: '', color: 'bg-emerald-500' }); }
+                }}>
                   <DialogTrigger asChild>
                     <Button variant="ghost" size="sm" className="gap-2 border-dashed border-2"><Plus className="w-3 h-3" /> Nueva</Button>
                   </DialogTrigger>
                   <DialogContent>
-                    <DialogHeader><DialogTitle>Agregar Herramienta de Diagnóstico</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>{editingToolId ? 'Editar Herramienta' : 'Agregar Herramienta'}</DialogTitle></DialogHeader>
                     <div className="space-y-4 py-4">
                       <div className="space-y-2">
                         <Label>Nombre del Hallazgo</Label>
@@ -236,7 +284,7 @@ function OdontogramContent({ id }: { id: string }) {
                       <div className="space-y-2">
                         <Label>Color Distintivo</Label>
                         <div className="flex gap-2 flex-wrap">
-                          {['bg-red-500', 'bg-blue-500', 'bg-emerald-500', 'bg-amber-400', 'bg-purple-400', 'bg-slate-800', 'bg-pink-500'].map(col => (
+                          {['bg-red-500', 'bg-blue-500', 'bg-emerald-500', 'bg-amber-400', 'bg-purple-400', 'bg-slate-800', 'bg-pink-500', 'bg-teal-500', 'bg-orange-500'].map(col => (
                             <div 
                               key={col} 
                               onClick={() => setNewTool({...newTool, color: col})}
@@ -246,7 +294,7 @@ function OdontogramContent({ id }: { id: string }) {
                         </div>
                       </div>
                     </div>
-                    <DialogFooter><Button onClick={addTool} className="w-full">Agregar a la Paleta</Button></DialogFooter>
+                    <DialogFooter><Button onClick={saveTool} className="w-full">{editingToolId ? 'Guardar Cambios' : 'Agregar a la Paleta'}</Button></DialogFooter>
                   </DialogContent>
                 </Dialog>
               </div>
