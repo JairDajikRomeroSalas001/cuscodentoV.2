@@ -1,13 +1,18 @@
 "use client";
 
 const DB_NAME = "KuskoDentoDB";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export interface User {
   id: string;
   username: string;
   password?: string;
   role: 'admin';
+  fullName?: string;
+  dni?: string;
+  address?: string;
+  photo?: string;
+  colegiatura?: string;
 }
 
 export interface Patient {

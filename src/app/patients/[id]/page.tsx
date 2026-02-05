@@ -9,7 +9,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Calendar, CreditCard, ImageIcon, FileText, Activity, ChevronLeft, Plus, Eye, History, Upload, Trash2, Download, ZoomIn, X } from 'lucide-react';
+import { Calendar, CreditCard, ImageIcon, FileText, Activity, ChevronLeft, Plus, Eye, History, Upload, Trash2, Download, ZoomIn, X, FileSearch } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -24,7 +24,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [odontograms, setOdontograms] = useState<Odontogram[]>([]);
   
-  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<{ url: string; type: string } | null>(null);
 
   useEffect(() => {
     loadAll();
@@ -80,9 +80,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     URL.revokeObjectURL(url);
   };
 
-  const openPreview = (fileBlob: Blob) => {
+  const openPreview = (fileBlob: Blob, fileType: string) => {
     const url = URL.createObjectURL(fileBlob);
-    setZoomedImage(url);
+    setPreviewData({ url, type: fileType });
   };
 
   const deleteFile = async (store: 'radiographs' | 'consents', fileId: string) => {
@@ -207,7 +207,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
                    {radiographs.map(r => (
                      <Card key={r.id} className="overflow-hidden group relative border-none shadow-sm hover:shadow-md transition-all">
-                       <div className="aspect-square bg-slate-100 flex items-center justify-center overflow-hidden cursor-pointer" onClick={() => openPreview(r.fileBlob)}>
+                       <div className="aspect-square bg-slate-100 flex items-center justify-center overflow-hidden cursor-pointer" onClick={() => openPreview(r.fileBlob, r.fileType)}>
                           <img 
                             src={URL.createObjectURL(r.fileBlob)} 
                             className="w-full h-full object-cover transition-transform group-hover:scale-105" 
@@ -255,14 +255,16 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                    {consents.map(c => (
                      <Card key={c.id} className="p-4 flex items-center justify-between border-none shadow-sm group">
                        <div className="flex items-center gap-4">
-                          <div className="p-3 bg-sky-100 rounded-lg text-sky-600"><FileText className="w-6 h-6" /></div>
+                          <div className="p-3 bg-sky-100 rounded-lg text-sky-600">
+                            {c.fileType.includes('pdf') ? <FileSearch className="w-6 h-6" /> : <FileText className="w-6 h-6" />}
+                          </div>
                           <div>
                              <p className="font-bold text-sm truncate max-w-[200px]">{c.fileName}</p>
                              <p className="text-[10px] text-muted-foreground">{c.date}</p>
                           </div>
                        </div>
                        <div className="flex gap-2">
-                          <Button variant="ghost" size="sm" onClick={() => openPreview(c.fileBlob)}>Previsualizar</Button>
+                          <Button variant="ghost" size="sm" onClick={() => openPreview(c.fileBlob, c.fileType)}>Previsualizar</Button>
                           <Button variant="ghost" size="icon" className="text-destructive opacity-0 group-hover:opacity-100" onClick={() => deleteFile('consents', c.id)}><Trash2 className="w-4 h-4" /></Button>
                        </div>
                      </Card>
@@ -391,18 +393,25 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           </Tabs>
         </div>
 
-        {/* Modal de Zoom General */}
-        <Dialog open={!!zoomedImage} onOpenChange={() => setZoomedImage(null)}>
-           <DialogContent className="max-w-[95vw] h-[95vh] flex items-center justify-center p-0 bg-black/90 border-none">
-              <Button variant="ghost" size="icon" className="absolute top-4 right-4 text-white z-50 bg-black/40 hover:bg-black" onClick={() => setZoomedImage(null)}>
-                <X className="w-6 h-6" />
-              </Button>
-              {zoomedImage && (
-                <div className="w-full h-full flex items-center justify-center p-4">
-                  {zoomedImage.includes('pdf') ? (
-                    <iframe src={zoomedImage} className="w-full h-full rounded-lg" title="PDF Preview" />
+        {/* Modal de Zoom General y PDF Preview */}
+        <Dialog open={!!previewData} onOpenChange={() => setPreviewData(null)}>
+           <DialogContent className="max-w-[95vw] h-[95vh] flex flex-col p-0 bg-black/95 border-none">
+              <div className="flex justify-between items-center p-4 bg-black/40 text-white z-50">
+                <span className="text-sm font-medium">Previsualización de Documento</span>
+                <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" onClick={() => setPreviewData(null)}>
+                  <X className="w-6 h-6" />
+                </Button>
+              </div>
+              {previewData && (
+                <div className="flex-1 w-full h-full flex items-center justify-center p-4">
+                  {previewData.type.includes('pdf') ? (
+                    <iframe 
+                      src={previewData.url} 
+                      className="w-full h-full rounded-lg bg-white" 
+                      title="PDF Preview"
+                    />
                   ) : (
-                    <img src={zoomedImage} className="max-w-full max-h-full object-contain shadow-2xl" alt="Preview" />
+                    <img src={previewData.url} className="max-w-full max-h-full object-contain shadow-2xl" alt="Preview" />
                   )}
                 </div>
               )}
