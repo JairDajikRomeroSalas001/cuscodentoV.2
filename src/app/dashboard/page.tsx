@@ -3,16 +3,14 @@
 import { AuthProvider } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Users, UserSquare2, Stethoscope, Landmark, Image, Activity, FileText, Calendar, Database } from 'lucide-react';
+import { Users, UserSquare2, Stethoscope, Landmark, Activity, Calendar, Database } from 'lucide-react';
 import Link from 'next/link';
 
 const modules = [
   { icon: UserSquare2, title: 'Pacientes', description: 'Registro y historial clínico', href: '/patients', color: 'bg-teal-500' },
   { icon: Stethoscope, title: 'Tratamientos', description: 'Catálogo de servicios y precios', href: '/treatments', color: 'bg-blue-500' },
   { icon: Landmark, title: 'Pagos', description: 'Control de abonos y saldos', href: '/payments', color: 'bg-emerald-500' },
-  { icon: Image, title: 'Radiografías', description: 'Archivo digital de imágenes', href: '/radiographs', color: 'bg-cyan-500' },
   { icon: Activity, title: 'Odontograma', description: 'Esquema gráfico interactivo', href: '/odontogram', color: 'bg-indigo-500' },
-  { icon: FileText, title: 'Consentimientos', description: 'Documentos legales firmados', href: '/consents', color: 'bg-sky-500' },
   { icon: Calendar, title: 'Citas', description: 'Agenda de pacientes', href: '/appointments', color: 'bg-violet-500' },
   { icon: Users, title: 'Usuarios', description: 'Administración de acceso', href: '/admin/users', color: 'bg-slate-500' },
   { icon: Database, title: 'Respaldo', description: 'Backup y restauración', href: '/backups', color: 'bg-amber-500' },

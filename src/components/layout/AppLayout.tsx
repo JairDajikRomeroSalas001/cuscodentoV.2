@@ -3,7 +3,7 @@
 import React from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
-import { Users, UserSquare2, Stethoscope, Landmark, Image, Activity, FileText, Calendar, Database, LogOut } from 'lucide-react';
+import { Users, UserSquare2, Stethoscope, Landmark, Activity, Calendar, Database, LogOut } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -11,9 +11,7 @@ const menuItems = [
   { icon: UserSquare2, label: 'Pacientes', href: '/patients' },
   { icon: Stethoscope, label: 'Tratamientos', href: '/treatments' },
   { icon: Landmark, label: 'Pagos', href: '/payments' },
-  { icon: Image, label: 'Radiografías', href: '/radiographs' },
   { icon: Activity, label: 'Odontograma', href: '/odontogram' },
-  { icon: FileText, label: 'Consentimientos', href: '/consents' },
   { icon: Calendar, label: 'Citas', href: '/appointments' },
   { icon: Users, label: 'Usuarios', href: '/admin/users' },
   { icon: Database, label: 'Copia de Seguridad', href: '/backups' },
