@@ -1,15 +1,15 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { AuthProvider } from '@/hooks/use-auth';
+import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { db, Appointment, Patient, Treatment, User, Payment } from '@/lib/db';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Calendar as CalendarIcon, Clock, User as UserIcon, Filter, Search, Check } from 'lucide-react';
+import { Plus, Calendar as CalendarIcon, Clock, User as UserIcon, Filter, Search, Check, Trash2, ShieldAlert } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -19,11 +19,15 @@ import { cn } from '@/lib/utils';
 
 function AppointmentsContent() {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const [appointments, setAppointments] = useState<any[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [treatments, setTreatments] = useState<Treatment[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [appointmentToDelete, setAppointmentToDelete] = useState<string | null>(null);
+  const [confirmPassword, setConfirmPassword] = useState('');
   
   const [form, setForm] = useState({
     patientId: '',
@@ -78,7 +82,7 @@ function AppointmentsContent() {
       patientId: form.patientId,
       treatmentId: form.treatmentId,
       doctorId: form.doctorId,
-      doctorName: doctor?.username || 'Médico',
+      doctorName: doctor?.fullName || doctor?.username || 'Médico',
       date: form.date,
       time: form.time,
       observations: form.observations,
@@ -114,6 +118,42 @@ function AppointmentsContent() {
     toast({ title: "Cita Registrada", description: `Saldo: S/. ${balance.toFixed(2)}` });
     setForm({ patientId: '', treatmentId: '', doctorId: '', date: '', time: '', observations: '', status: 'Asignado', cost: 0, discountAmount: 0, paidAmount: 0, patientSearch: '' });
     load();
+  };
+
+  const updateStatus = async (appointmentId: string, newStatus: 'Asignado' | 'Atendido') => {
+    const app = appointments.find(a => a.id === appointmentId);
+    if (app) {
+      await db.put('appointments', { ...app, status: newStatus });
+      toast({ title: "Estado Actualizado", description: `La cita ahora está marcada como ${newStatus}` });
+      load();
+    }
+  };
+
+  const handleDeleteRequest = (id: string) => {
+    setAppointmentToDelete(id);
+    setConfirmPassword('');
+    setIsDeleteOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!currentUser) return;
+    
+    // Verificación de contraseña local
+    const users = await db.getAll<User>('users');
+    const me = users.find(u => u.id === currentUser.id);
+    
+    if (me && me.password === confirmPassword) {
+      if (appointmentToDelete) {
+        await db.delete('appointments', appointmentToDelete);
+        // También podríamos eliminar el pago asociado si es necesario, pero usualmente se mantiene el registro contable
+        setIsDeleteOpen(false);
+        setAppointmentToDelete(null);
+        toast({ title: "Cita Eliminada" });
+        load();
+      }
+    } else {
+      toast({ variant: 'destructive', title: 'Error', description: 'Contraseña incorrecta. No se puede eliminar la cita.' });
+    }
   };
 
   const filteredPatientList = patients.filter(p => 
@@ -187,9 +227,9 @@ function AppointmentsContent() {
                 <div className="space-y-2">
                   <Label>Médico</Label>
                   <Select onValueChange={v => setForm({...form, doctorId: v})}>
-                    <SelectTrigger><SelectValue placeholder="Seleccione..." /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Seleccione Doctor" /></SelectTrigger>
                     <SelectContent>
-                      {users.map(u => <SelectItem key={u.id} value={u.username}>{u.username}</SelectItem>)}
+                      {users.map(u => <SelectItem key={u.id} value={u.id}>{u.fullName || u.username}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -272,6 +312,7 @@ function AppointmentsContent() {
                    <TableHead>Tratamiento</TableHead>
                    <TableHead>Saldos</TableHead>
                    <TableHead>Estado</TableHead>
+                   <TableHead className="text-right">Acciones</TableHead>
                  </TableRow>
                </TableHeader>
                <TableBody>
@@ -285,7 +326,7 @@ function AppointmentsContent() {
                      </TableCell>
                      <TableCell>
                         <div className="font-medium">{a.patientName}</div>
-                        <div className="text-[10px] text-muted-foreground">Doctor: {a.doctorName}</div>
+                        <div className="text-[10px] text-muted-foreground italic">Dr. {a.doctorName}</div>
                      </TableCell>
                      <TableCell className="text-xs uppercase">{a.treatmentName}</TableCell>
                      <TableCell>
@@ -295,18 +336,61 @@ function AppointmentsContent() {
                         </div>
                      </TableCell>
                      <TableCell>
-                        <Badge variant={a.status === 'Atendido' ? 'default' : 'outline'}>{a.status}</Badge>
+                        <Select value={a.status} onValueChange={(v) => updateStatus(a.id, v as any)}>
+                          <SelectTrigger className="w-28 h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Asignado">Asignado</SelectItem>
+                            <SelectItem value="Atendido">Atendido</SelectItem>
+                          </SelectContent>
+                        </Select>
+                     </TableCell>
+                     <TableCell className="text-right">
+                       <Button variant="ghost" size="icon" onClick={() => handleDeleteRequest(a.id)} className="text-destructive">
+                         <Trash2 className="w-4 h-4" />
+                       </Button>
                      </TableCell>
                    </TableRow>
                  ))}
                  {appointments.length === 0 && (
-                   <TableRow><TableCell colSpan={5} className="text-center py-10 opacity-50">No hay citas registradas</TableCell></TableRow>
+                   <TableRow><TableCell colSpan={6} className="text-center py-10 opacity-50">No hay citas registradas</TableCell></TableRow>
                  )}
                </TableBody>
              </Table>
           </Card>
         </div>
       </div>
+
+      {/* Modal de eliminación con contraseña */}
+      <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <ShieldAlert className="w-5 h-5" /> Confirmar Eliminación
+            </DialogTitle>
+            <DialogDescription>
+              Para eliminar esta cita, por seguridad debe ingresar su contraseña de administrador.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="pass-confirm">Contraseña de Administrador</Label>
+              <Input 
+                id="pass-confirm" 
+                type="password" 
+                value={confirmPassword} 
+                onChange={(e) => setConfirmPassword(e.target.value)} 
+                placeholder="••••••••"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={confirmDelete}>Eliminar Cita Permanentemente</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }

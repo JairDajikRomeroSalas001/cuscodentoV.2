@@ -120,7 +120,7 @@ function PatientsContent() {
                   <h3 className="font-bold text-lg border-b pb-2 flex items-center gap-2 text-primary">Datos Personales</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="dni">DNI (Opcional, autocompleta 0 si vacío)</Label>
+                      <Label htmlFor="dni">DNI (Opcional)</Label>
                       <Input id="dni" value={newPatient.dni} onChange={e => setNewPatient({...newPatient, dni: e.target.value.slice(0, 8)})} maxLength={8} placeholder="00000000" />
                     </div>
                     <div className="space-y-2">
@@ -204,7 +204,7 @@ function PatientsContent() {
                       <Select onValueChange={v => setNewPatient({...newPatient, attendedBy: v})}>
                         <SelectTrigger><SelectValue placeholder="Seleccione Doctor" /></SelectTrigger>
                         <SelectContent>
-                          {users.map(u => <SelectItem key={u.id} value={u.username}>{u.username}</SelectItem>)}
+                          {users.map(u => <SelectItem key={u.id} value={u.fullName || u.username}>{u.fullName || u.username}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -248,7 +248,7 @@ function PatientsContent() {
                       <TableCell className="font-medium">{p.dni}</TableCell>
                       <TableCell className="font-bold">{p.lastNames}, {p.names}</TableCell>
                       <TableCell>{p.phone}</TableCell>
-                      <TableCell>Dr. {p.attendedBy}</TableCell>
+                      <TableCell>Dr. {p.attendedBy || 'N/A'}</TableCell>
                       <TableCell className="text-right">
                         <Button asChild variant="ghost" size="sm" className="gap-2">
                           <Link href={`/patients/${p.id}`}>

@@ -64,9 +64,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <SidebarTrigger />
             <div className="flex-1" />
             <div className="flex items-center gap-3 px-2">
-              <span className="text-sm font-medium">Dr. {user.username}</span>
+              <span className="text-sm font-medium">Dr. {user.fullName || user.username}</span>
               <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold">
-                {user.username.charAt(0).toUpperCase()}
+                {(user.fullName || user.username).charAt(0).toUpperCase()}
               </div>
             </div>
           </header>

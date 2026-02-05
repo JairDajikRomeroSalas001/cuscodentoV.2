@@ -150,7 +150,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                      </div>
                      <div className="flex flex-col gap-1">
                         <span className="text-[10px] text-muted-foreground uppercase font-bold">Atendido por</span>
-                        <span className="font-medium">Dr. {patient.attendedBy}</span>
+                        <span className="font-medium">Dr. {patient.attendedBy || 'N/A'}</span>
                      </div>
                    </CardContent>
                  </Card>
