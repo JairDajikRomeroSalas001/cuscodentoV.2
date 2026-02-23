@@ -8,13 +8,12 @@ import { db, User, UserRole } from '@/lib/db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
-import { Shield, Trash2, UserPlus, Lock, Edit2, Camera, MapPin, CreditCard, User as UserIcon, Building2, Stethoscope, Briefcase, Clock, Circle } from 'lucide-react';
+import { Shield, Trash2, UserPlus, Camera, MapPin, User as UserIcon, Building2, Stethoscope, Briefcase, Clock, Circle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 function UsersContent() {
@@ -63,16 +62,19 @@ function UsersContent() {
     e.preventDefault();
     if (!currentUser) return;
 
+    const isCreatingClinic = currentUser.role === 'superadmin';
+
     const newUser: User = {
       id: editingId || crypto.randomUUID(),
-      username: form.username,
-      password: form.password,
+      // Solo las clínicas tienen usuario y contraseña
+      username: isCreatingClinic ? form.username : undefined,
+      password: isCreatingClinic ? form.password : undefined,
       fullName: form.fullName,
       dni: form.dni,
       address: form.address,
       colegiatura: form.colegiatura,
       photo: photoPreview || undefined,
-      role: currentUser.role === 'superadmin' ? 'clinic' : form.role,
+      role: isCreatingClinic ? 'clinic' : form.role,
       clinicId: currentUser.role === 'clinic' ? currentUser.id : undefined,
       status: editingId ? (users.find(u => u.id === editingId)?.status || 'inactive') : 'inactive'
     };
@@ -108,7 +110,7 @@ function UsersContent() {
   const openEdit = (u: User) => {
     setEditingId(u.id);
     setForm({ 
-      username: u.username, 
+      username: u.username || '', 
       password: u.password || '', 
       fullName: u.fullName || '', 
       dni: u.dni || '', 
@@ -134,8 +136,8 @@ function UsersContent() {
             </h2>
             <p className="text-muted-foreground mt-1">
               {isSuperAdmin 
-                ? 'Administra los accesos y monitorea consultorios dentales' 
-                : 'Administra las cuentas de tu equipo clínico'}
+                ? 'Administra los accesos de consultorios dentales' 
+                : 'Administra el personal clínico (Doctores, Asistentes, Técnicos)'}
             </p>
           </div>
           <Dialog open={isOpen} onOpenChange={(val) => {
@@ -194,14 +196,19 @@ function UsersContent() {
                     </div>
                   )}
 
-                  <div className="space-y-2">
-                    <Label htmlFor="username">Usuario (Login)</Label>
-                    <Input id="username" value={form.username} onChange={e => setForm({...form, username: e.target.value})} required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="password">Contraseña</Label>
-                    <Input id="password" type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} required />
-                  </div>
+                  {/* Los campos de Login solo se muestran para Consultorios (creados por SuperAdmin) */}
+                  {isSuperAdmin && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="username">Usuario (Login)</Label>
+                        <Input id="username" value={form.username} onChange={e => setForm({...form, username: e.target.value})} required={isSuperAdmin} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="password">Contraseña</Label>
+                        <Input id="password" type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} required={isSuperAdmin} />
+                      </div>
+                    </>
+                  )}
                   
                   <div className="space-y-2">
                     <Label htmlFor="dni">DNI / RUC</Label>
@@ -267,7 +274,7 @@ function UsersContent() {
                <CardContent className="space-y-3">
                  <div className="text-xs space-y-2 text-muted-foreground">
                     <p className="flex items-center gap-2"><MapPin className="w-3 h-3" /> {u.address || 'Sin dirección'}</p>
-                    {u.lastLogin && (
+                    {u.lastLogin && isSuperAdmin && (
                       <p className="flex items-center gap-2"><Clock className="w-3 h-3" /> Último acceso: {new Date(u.lastLogin).toLocaleString('es-PE')}</p>
                     )}
                  </div>
