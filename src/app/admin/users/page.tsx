@@ -33,7 +33,7 @@ function UsersContent() {
     address: '', 
     colegiatura: '',
     role: 'doctor' as UserRole,
-    subscriptionFee: '0',
+    subscriptionFee: '50',
     nextPaymentDate: '',
     contractStartDate: new Date().toISOString().split('T')[0],
     paymentFrequency: 'monthly' as 'monthly' | 'yearly',
@@ -100,7 +100,6 @@ function UsersContent() {
       role: isCreatingClinic ? 'clinic' : form.role,
       clinicId: currentUser.role === 'clinic' ? currentUser.id : undefined,
       status: editingId ? (users.find(u => u.id === editingId)?.status || 'inactive') : 'inactive',
-      // Subscription fields
       subscriptionFee: isCreatingClinic ? parseFloat(form.subscriptionFee) : undefined,
       nextPaymentDate: isCreatingClinic ? form.nextPaymentDate : undefined,
       contractStartDate: isCreatingClinic ? form.contractStartDate : undefined,
@@ -120,13 +119,13 @@ function UsersContent() {
         clinicName: newUser.fullName || newUser.username || 'Nuevo Consultorio',
         amount: totalAmount,
         date: new Date().toISOString().split('T')[0],
-        concept: `Pago inicial por ${installments} cuota(s) (${form.paymentFrequency === 'monthly' ? 'Mensual' : 'Anual'})`
+        concept: `Pago inicial: ${installments} cuota(s) (${form.paymentFrequency === 'monthly' ? 'Mensual' : 'Anual'})`
       });
     }
 
     setIsOpen(false);
     resetForm();
-    toast({ title: editingId ? 'Registro actualizado' : 'Registro creado' });
+    toast({ title: editingId ? 'Actualizado correctamente' : 'Registrado correctamente' });
     load();
   };
 
@@ -141,7 +140,7 @@ function UsersContent() {
       address: '', 
       colegiatura: '',
       role: currentUser?.role === 'clinic' ? 'doctor' : 'clinic',
-      subscriptionFee: '0',
+      subscriptionFee: '50',
       nextPaymentDate: '',
       contractStartDate: new Date().toISOString().split('T')[0],
       paymentFrequency: 'monthly',
@@ -167,7 +166,7 @@ function UsersContent() {
       address: u.address || '', 
       colegiatura: u.colegiatura || '',
       role: u.role,
-      subscriptionFee: u.subscriptionFee?.toString() || '0',
+      subscriptionFee: u.subscriptionFee?.toString() || '50',
       nextPaymentDate: u.nextPaymentDate || '',
       contractStartDate: u.contractStartDate || new Date().toISOString().split('T')[0],
       paymentFrequency: u.paymentFrequency || 'monthly',
@@ -193,7 +192,7 @@ function UsersContent() {
             </h2>
             <p className="text-muted-foreground mt-1">
               {isSuperAdmin 
-                ? 'Administra los accesos y estados de cuenta de los consultorios' 
+                ? 'Panel de control de acceso y suscripciones' 
                 : 'Administra el personal clínico de tu consultorio'}
             </p>
           </div>
@@ -210,7 +209,7 @@ function UsersContent() {
             <DialogContent className="sm:max-w-[750px] max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
-                  {editingId ? 'Editar Registro' : isSuperAdmin ? 'Registrar Nuevo Consultorio' : 'Registrar Nuevo Personal'}
+                  {editingId ? 'Editar Registro' : isSuperAdmin ? 'Registrar Consultorio' : 'Registrar Personal'}
                 </DialogTitle>
               </DialogHeader>
               <form onSubmit={handleSave} className="space-y-6 py-4">
@@ -234,13 +233,13 @@ function UsersContent() {
                     <Label htmlFor="fullName">
                       {isSuperAdmin ? 'Nombre del Consultorio' : 'Nombre Completo'}
                     </Label>
-                    <Input id="fullName" value={form.fullName} onChange={e => setForm({...form, fullName: e.target.value})} required placeholder={isSuperAdmin ? "Ej: Consultorio Dental Cusco" : "Ej: Dr. Juan Pérez"} />
+                    <Input id="fullName" value={form.fullName} onChange={e => setForm({...form, fullName: e.target.value})} required placeholder={isSuperAdmin ? "Ej: Clínica Dental Cusco" : "Ej: Dr. Juan Pérez"} />
                   </div>
                   
                   {isSuperAdmin && (
                     <>
                       <div className="space-y-2">
-                        <Label htmlFor="username">Usuario (Login)</Label>
+                        <Label htmlFor="username">Usuario de Acceso</Label>
                         <Input id="username" value={form.username} onChange={e => setForm({...form, username: e.target.value})} required={isSuperAdmin} />
                       </div>
                       <div className="space-y-2">
@@ -248,28 +247,25 @@ function UsersContent() {
                         <Input id="password" type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} required={isSuperAdmin} />
                       </div>
 
-                      <div className="col-span-2 space-y-2 border-2 border-primary/10 p-4 rounded-xl bg-primary/5">
+                      <div className="col-span-2 space-y-2 border border-primary/10 p-4 rounded-xl bg-primary/5">
                         <Label className="text-primary font-bold flex items-center gap-2">
-                          <ShieldAlert className="w-4 h-4" /> Estado de la Cuenta
+                          <ShieldAlert className="w-4 h-4" /> Estado del Acceso
                         </Label>
                         <Select value={form.subscriptionStatus} onValueChange={(v: any) => setForm({...form, subscriptionStatus: v})}>
-                          <SelectTrigger className="h-11 border-primary/20 bg-white">
+                          <SelectTrigger className="h-11 bg-white">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="active">Activa (Acceso Total)</SelectItem>
-                            <SelectItem value="suspended">Suspendida (Solo Lectura de Pago)</SelectItem>
+                            <SelectItem value="active">Activa (Acceso Permitido)</SelectItem>
+                            <SelectItem value="suspended">Suspendida (Bloqueo Temporal)</SelectItem>
                             <SelectItem value="blocked">Bloqueada (Acceso Denegado)</SelectItem>
                           </SelectContent>
                         </Select>
-                        <p className="text-[10px] text-muted-foreground italic">
-                          * El estado bloqueado impide el login. El suspendido permite login pero bloquea los módulos dentales.
-                        </p>
                       </div>
 
                       <div className="col-span-2 border-t pt-4 mt-2">
                         <h4 className="text-sm font-bold text-primary flex items-center gap-2 mb-4">
-                          <CreditCard className="w-4 h-4" /> Datos de Suscripción y Cobro
+                          <CreditCard className="w-4 h-4" /> Configuración de Suscripción
                         </h4>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 bg-muted/30 p-4 rounded-xl">
                           <div className="space-y-2">
@@ -277,7 +273,7 @@ function UsersContent() {
                             <Input type="number" step="0.01" value={form.subscriptionFee} onChange={e => setForm({...form, subscriptionFee: e.target.value})} />
                           </div>
                           <div className="space-y-2">
-                            <Label>Frecuencia de Cobro</Label>
+                            <Label>Frecuencia</Label>
                             <Select value={form.paymentFrequency} onValueChange={(v: any) => setForm({...form, paymentFrequency: v})}>
                               <SelectTrigger><SelectValue /></SelectTrigger>
                               <SelectContent>
@@ -287,31 +283,31 @@ function UsersContent() {
                             </Select>
                           </div>
                           <div className="space-y-2">
-                            <Label>Cuotas Adelantadas</Label>
+                            <Label>Meses/Años Adelanto</Label>
                             <Select value={form.advanceInstallments} onValueChange={(v: any) => setForm({...form, advanceInstallments: v})}>
                               <SelectTrigger><SelectValue /></SelectTrigger>
                               <SelectContent>
-                                {[1, 2, 3, 4, 5, 6, 12, 24].map(n => (
-                                  <SelectItem key={n} value={n.toString()}>{n} {n === 1 ? 'Cuota' : 'Cuotas'}</SelectItem>
+                                {[1, 2, 3, 4, 5, 6, 12].map(n => (
+                                  <SelectItem key={n} value={n.toString()}>{n} cuota(s)</SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
                           </div>
                           <div className="space-y-2">
-                            <Label>Inicio de Contrato</Label>
+                            <Label>Inicio Contrato</Label>
                             <Input type="date" value={form.contractStartDate} onChange={e => setForm({...form, contractStartDate: e.target.value})} />
                           </div>
                           <div className="space-y-2">
-                            <Label>Próximo Pago (Calculado)</Label>
+                            <Label>Primer Vencimiento</Label>
                             <div className="h-10 px-3 py-2 border rounded-md bg-white font-bold text-primary flex items-center gap-2 text-xs">
                               <Calendar className="w-4 h-4" />
-                              {form.nextPaymentDate}
+                              {form.nextPaymentDate ? format(parseISO(form.nextPaymentDate), 'dd/MM/yyyy') : '---'}
                             </div>
                           </div>
                           <div className="space-y-2 flex flex-col justify-end">
                             <div className="p-2 bg-primary text-primary-foreground rounded-lg text-center">
-                              <p className="text-[10px] uppercase font-bold opacity-80">Total Pago Inicial</p>
-                              <p className="text-lg font-bold">S/. {totalInformational.toFixed(2)}</p>
+                              <p className="text-[9px] uppercase font-bold opacity-80">Total a Cobrar</p>
+                              <p className="text-base font-bold">S/. {totalInformational.toFixed(2)}</p>
                             </div>
                           </div>
                         </div>
@@ -321,44 +317,44 @@ function UsersContent() {
 
                   {!isSuperAdmin && (
                     <div className="space-y-2 col-span-2">
-                      <Label htmlFor="role">Tipo de Personal</Label>
+                      <Label htmlFor="role">Cargo / Función</Label>
                       <Select value={form.role} onValueChange={(v: any) => setForm({...form, role: v})}>
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="doctor">Doctor(a)</SelectItem>
-                          <SelectItem value="assistant">Asistente</SelectItem>
-                          <SelectItem value="technician">Técnico</SelectItem>
+                          <SelectItem value="doctor">Odontólogo(a)</SelectItem>
+                          <SelectItem value="assistant">Asistente Dental</SelectItem>
+                          <SelectItem value="technician">Técnico Dental</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   )}
                   
                   <div className="space-y-2">
-                    <Label htmlFor="dni">DNI / RUC</Label>
+                    <Label htmlFor="dni">DNI / Documento</Label>
                     <Input id="dni" value={form.dni} onChange={e => setForm({...form, dni: e.target.value})} required />
                   </div>
 
                   {(isSuperAdmin || form.role === 'doctor') && (
                     <div className="space-y-2">
-                      <Label htmlFor="colegiatura">N° Registro / Colegiatura</Label>
+                      <Label htmlFor="colegiatura">N° Colegiatura / Registro</Label>
                       <Input id="colegiatura" value={form.colegiatura} onChange={e => setForm({...form, colegiatura: e.target.value})} required={form.role === 'doctor'} />
                     </div>
                   )}
 
                   <div className="space-y-2 col-span-2">
-                    <Label htmlFor="address">Dirección</Label>
+                    <Label htmlFor="address">Dirección Local</Label>
                     <div className="relative">
                       <MapPin className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                      <Input id="address" className="pl-10" value={form.address} onChange={e => setForm({...form, address: e.target.value})} placeholder="Dirección completa" />
+                      <Input id="address" className="pl-10" value={form.address} onChange={e => setForm({...form, address: e.target.value})} />
                     </div>
                   </div>
                 </div>
 
                 <DialogFooter className="pt-6">
                   <Button type="submit" className="w-full h-12 text-lg">
-                    {editingId ? 'Guardar Cambios' : 'Confirmar Registro y Pago Inicial'}
+                    {editingId ? 'Actualizar Registro' : 'Registrar y Generar Primer Cobro'}
                   </Button>
                 </DialogFooter>
               </form>
@@ -383,14 +379,14 @@ function UsersContent() {
                     {isSuperAdmin && (
                       <div className="flex items-center gap-1">
                         <Circle className={cn("w-2 h-2 fill-current", u.status === 'active' ? 'text-emerald-500' : 'text-slate-300')} />
-                        <span className="text-[10px] font-bold text-muted-foreground">{u.status === 'active' ? 'Activo' : 'Desconectado'}</span>
+                        <span className="text-[10px] font-bold text-muted-foreground">{u.status === 'active' ? 'Online' : 'Offline'}</span>
                       </div>
                     )}
                    </div>
                    <CardDescription className="flex items-center gap-1 mt-1 font-bold text-primary">
                      <Shield className="w-3 h-3" /> {
                        u.role === 'clinic' ? 'Consultorio' : 
-                       u.role === 'doctor' ? 'Doctor(a)' : 
+                       u.role === 'doctor' ? 'Odontólogo' : 
                        u.role === 'assistant' ? 'Asistente' : 'Técnico'
                      }
                    </CardDescription>
@@ -405,22 +401,18 @@ function UsersContent() {
                           {u.subscriptionStatus === 'active' ? 'ACTIVA' : u.subscriptionStatus === 'suspended' ? 'SUSPENDIDA' : 'BLOQUEADA'}
                         </Badge>
                       </div>
-                      <p className="flex justify-between"><span>Cobro:</span> <b className="text-primary font-bold">S/. {u.subscriptionFee?.toFixed(2)}</b></p>
-                      <p className="flex justify-between"><span>Vence:</span> <b>{u.nextPaymentDate || 'N/A'}</b></p>
+                      <p className="flex justify-between"><span>Mensualidad:</span> <b className="text-primary font-bold">S/. {u.subscriptionFee?.toFixed(2)}</b></p>
+                      <p className="flex justify-between"><span>Vencimiento:</span> <b className="text-red-600">{u.nextPaymentDate ? format(parseISO(u.nextPaymentDate), 'dd/MM/yyyy') : 'Pendiente'}</b></p>
                    </div>
                  )}
                  <div className="text-xs space-y-2 text-muted-foreground">
                     <p className="flex items-center gap-2 truncate"><MapPin className="w-3 h-3" /> {u.address || 'Sin dirección'}</p>
-                    {u.lastLogin && isSuperAdmin && (
-                      <p className="flex items-center gap-2"><Clock className="w-3 h-3" /> Login: {new Date(u.lastLogin).toLocaleString('es-PE')}</p>
-                    )}
                  </div>
                  <div className="flex gap-2 pt-2">
-                   <Button variant="outline" size="sm" className="gap-2 flex-1" onClick={() => openEdit(u)}>
-                     <Edit2 className="w-4 h-4" />
-                     Editar
+                   <Button variant="outline" size="sm" className="gap-2 flex-1 h-9" onClick={() => openEdit(u)}>
+                     <Edit2 className="w-4 h-4" /> Editar
                    </Button>
-                   <Button variant="ghost" size="sm" onClick={() => handleDelete(u.id)} className="text-destructive hover:bg-destructive/10">
+                   <Button variant="ghost" size="sm" onClick={() => handleDelete(u.id)} className="h-9 text-destructive hover:bg-destructive/10">
                      <Trash2 className="w-4 h-4" />
                    </Button>
                  </div>
@@ -430,7 +422,7 @@ function UsersContent() {
           {users.length === 0 && (
             <div className="col-span-full py-20 text-center opacity-50 flex flex-col items-center gap-4">
               <Shield className="w-16 h-16" />
-              <p>No hay registros encontrados.</p>
+              <p>No se encontraron registros.</p>
             </div>
           )}
         </div>

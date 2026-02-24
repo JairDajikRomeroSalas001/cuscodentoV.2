@@ -36,14 +36,15 @@ function SubscriptionsContent() {
 
   useEffect(() => {
     if (selectedClinic && installments) {
-      const currentNext = selectedClinic.nextPaymentDate ? parseISO(selectedClinic.nextPaymentDate) : new Date();
+      // Calcular a partir de la fecha de vencimiento actual o hoy si no tiene
+      const currentExpiry = selectedClinic.nextPaymentDate ? parseISO(selectedClinic.nextPaymentDate) : new Date();
       const num = parseInt(installments) || 1;
       let calculatedNext;
       
       if (selectedClinic.paymentFrequency === 'yearly') {
-        calculatedNext = addYears(currentNext, num);
+        calculatedNext = addYears(currentExpiry, num);
       } else {
-        calculatedNext = addMonths(currentNext, num);
+        calculatedNext = addMonths(currentExpiry, num);
       }
       
       setNextDate(format(calculatedNext, 'yyyy-MM-dd'));
@@ -80,7 +81,7 @@ function SubscriptionsContent() {
       clinicName: selectedClinic.fullName || selectedClinic.username || 'Clínica',
       amount: parseFloat(payAmount),
       date: new Date().toISOString().split('T')[0],
-      concept: `Renovación: ${installments} cuota(s) (${selectedClinic.paymentFrequency === 'monthly' ? 'Mensual' : 'Anual'}). Próximo vencimiento: ${nextDate}`
+      concept: `Renovación: ${installments} cuota(s) (${selectedClinic.paymentFrequency === 'monthly' ? 'Mensual' : 'Anual'}). Próximo vencimiento: ${format(parseISO(nextDate), 'dd/MM/yyyy')}`
     };
 
     await db.put('subscription_payments', payment);
@@ -95,7 +96,7 @@ function SubscriptionsContent() {
     setIsPayOpen(false);
     toast({ 
       title: "Pago registrado con éxito", 
-      description: `Se ha extendido el acceso hasta el ${format(parseISO(nextDate), "dd 'de' MMMM, yyyy", { locale: es })}` 
+      description: `Se ha extendido el acceso hasta el ${format(parseISO(nextDate), "dd/MM/yyyy")}` 
     });
     setInstallments('1');
     load();
@@ -161,7 +162,7 @@ function SubscriptionsContent() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Consultorio</TableHead>
-                    <TableHead>Vencimiento</TableHead>
+                    <TableHead>Próximo Vencimiento</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead className="text-right">Gestión</TableHead>
                   </TableRow>
@@ -176,7 +177,7 @@ function SubscriptionsContent() {
                           <p className="text-[10px] text-muted-foreground uppercase">{c.paymentFrequency === 'yearly' ? 'Plan Anual' : 'Plan Mensual'}</p>
                         </TableCell>
                         <TableCell className="text-xs font-medium">
-                          {c.nextPaymentDate ? format(parseISO(c.nextPaymentDate), "dd/MM/yyyy") : '---'}
+                          {c.nextPaymentDate ? format(parseISO(c.nextPaymentDate), "dd/MM/yyyy") : 'Pendiente'}
                         </TableCell>
                         <TableCell>
                           <Badge 
@@ -187,7 +188,7 @@ function SubscriptionsContent() {
                               status === 'active' && "bg-emerald-500 hover:bg-emerald-600"
                             )}
                           >
-                            {status === 'active' ? 'AL DÍA' : status === 'overdue' ? 'POR VENCER' : status === 'suspended' ? 'SUSPENDIDO' : 'BLOQUEADO'}
+                            {status === 'active' ? 'AL DÍA' : status === 'overdue' ? 'VENCIDO' : status === 'suspended' ? 'SUSPENDIDO' : 'BLOQUEADO'}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
@@ -208,8 +209,8 @@ function SubscriptionsContent() {
 
           <Card className="border-none shadow-sm">
             <CardHeader className="border-b mb-4">
-              <CardTitle className="flex items-center gap-2"><History className="w-5 h-5" /> Historial de Cobros</CardTitle>
-              <CardDescription>Últimos pagos verificados</CardDescription>
+              <CardTitle className="flex items-center gap-2"><History className="w-5 h-5" /> Últimos Cobros</CardTitle>
+              <CardDescription>Historial de recaudación reciente</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 scrollbar-hide">
@@ -226,7 +227,7 @@ function SubscriptionsContent() {
                     </div>
                     <div className="text-right shrink-0">
                       <p className="font-bold text-xs text-emerald-600">S/. {h.amount.toFixed(2)}</p>
-                      <p className="text-[9px] text-muted-foreground">{h.date}</p>
+                      <p className="text-[9px] text-muted-foreground">{format(parseISO(h.date), 'dd/MM/yyyy')}</p>
                     </div>
                   </div>
                 ))}
@@ -246,47 +247,42 @@ function SubscriptionsContent() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Landmark className="w-5 h-5 text-primary" /> Registrar Pago
+              <Landmark className="w-5 h-5 text-primary" /> Registrar Cobro
             </DialogTitle>
           </DialogHeader>
           {selectedClinic && (
             <form onSubmit={handleRegisterPayment} className="space-y-5 py-2">
               <div className="bg-primary/5 p-4 rounded-xl border border-primary/10">
-                <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Consultorio Seleccionado</p>
+                <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Consultorio</p>
                 <p className="font-bold text-primary">{selectedClinic.fullName || selectedClinic.username}</p>
-                <p className="text-xs text-muted-foreground mt-1">Costo Unitario: S/. {selectedClinic.subscriptionFee?.toFixed(2)} ({selectedClinic.paymentFrequency === 'yearly' ? 'Anual' : 'Mensual'})</p>
+                <div className="flex justify-between mt-2 border-t pt-2 border-primary/10">
+                  <span className="text-xs text-muted-foreground">Vencimiento Actual:</span>
+                  <span className="text-xs font-bold">{selectedClinic.nextPaymentDate ? format(parseISO(selectedClinic.nextPaymentDate), 'dd/MM/yyyy') : 'Pendiente'}</span>
+                </div>
               </div>
               
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>N° de Cuotas a Pagar</Label>
+                  <Label>N° de Cuotas (Meses/Años)</Label>
                   <Input type="number" min="1" value={installments} onChange={e => setInstallments(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label>Monto Total (S/.)</Label>
-                  <Input type="number" step="0.01" value={payAmount} onChange={e => setPayAmount(e.target.value)} />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Nueva Fecha de Vencimiento</Label>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                  <Input type="date" className="pl-10" value={nextDate} onChange={e => setNextDate(e.target.value)} required />
+                  <Input type="number" step="0.01" value={payAmount} readOnly className="bg-muted font-bold" />
                 </div>
               </div>
 
               <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span className="text-xs font-bold text-emerald-800 uppercase">Acceso se extenderá hasta:</span>
+                  <span className="text-xs font-bold text-emerald-800 uppercase">Nuevo Vencimiento:</span>
                 </div>
                 <span className="text-xs font-bold text-emerald-600">{nextDate ? format(parseISO(nextDate), "dd/MM/yyyy") : '---'}</span>
               </div>
 
               <DialogFooter className="pt-2">
                 <Button type="submit" className="w-full h-12 text-lg shadow-lg shadow-primary/20">
-                  Confirmar Pago y Renovar Acceso
+                  Confirmar Cobro y Renovar
                 </Button>
               </DialogFooter>
             </form>
