@@ -10,13 +10,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, Landmark, History, ReceiptText, ShieldCheck, ShieldAlert, Ban, RefreshCcw } from 'lucide-react';
+import { Search, Landmark, History, ReceiptText, ShieldCheck, ShieldAlert, Ban, RefreshCcw, MoreVertical, Wallet } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { format, isAfter, parseISO, addDays, addMonths } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 function BillingContent() {
   const { toast } = useToast();
@@ -95,7 +96,7 @@ function BillingContent() {
     const updatedClinic: User = {
       ...selectedClinic,
       nextPaymentDate: nextDate,
-      subscriptionStatus: 'active' // Al pagar, se activa automáticamente
+      subscriptionStatus: 'active'
     };
     await db.put('users', updatedClinic);
 
@@ -181,40 +182,43 @@ function BillingContent() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button variant="outline" size="sm" className="h-8 w-8 p-0" title="Registrar Cobro" onClick={() => {
-                              setSelectedClinic(c);
-                              setIsPayOpen(true);
-                            }}>
-                              <Landmark className="w-3.5 h-3.5" />
-                            </Button>
+                          <div className="flex justify-end gap-2">
                             <Button 
-                              variant="outline" 
                               size="sm" 
-                              className={cn("h-8 w-8 p-0", c.subscriptionStatus === 'active' && "bg-emerald-50 text-emerald-600 border-emerald-200")} 
-                              title="Activar Manual"
-                              onClick={() => handleStatusChange(c.id, 'active')}
+                              className="h-9 px-4 gap-2 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/10 transition-all hover:scale-105" 
+                              onClick={() => {
+                                setSelectedClinic(c);
+                                setIsPayOpen(true);
+                              }}
                             >
-                              <ShieldCheck className="w-3.5 h-3.5" />
+                              <Wallet className="w-4 h-4" />
+                              Registrar Pago
                             </Button>
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              className={cn("h-8 w-8 p-0", c.subscriptionStatus === 'suspended' && "bg-orange-50 text-orange-600 border-orange-200")} 
-                              title="Suspender Manual"
-                              onClick={() => handleStatusChange(c.id, 'suspended')}
-                            >
-                              <ShieldAlert className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              className={cn("h-8 w-8 p-0", c.subscriptionStatus === 'blocked' && "bg-red-50 text-red-600 border-red-200")} 
-                              title="Bloquear Acceso"
-                              onClick={() => handleStatusChange(c.id, 'blocked')}
-                            >
-                              <Ban className="w-3.5 h-3.5" />
-                            </Button>
+
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm" className="h-9 w-9 p-0 rounded-xl hover:bg-slate-50">
+                                  <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-52 rounded-2xl shadow-xl border-slate-100 p-2">
+                                <DropdownMenuLabel className="text-[10px] px-3 py-2 uppercase font-black text-muted-foreground tracking-widest">Control de Acceso</DropdownMenuLabel>
+                                <DropdownMenuSeparator className="my-1" />
+                                <DropdownMenuItem className="gap-3 py-2.5 rounded-xl cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 transition-colors" onClick={() => handleStatusChange(c.id, 'active')}>
+                                  <div className="p-1.5 bg-emerald-100 rounded-lg"><ShieldCheck className="w-4 h-4 text-emerald-600" /></div>
+                                  <span className="font-bold text-sm text-emerald-900">Activar Servicio</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem className="gap-3 py-2.5 rounded-xl cursor-pointer hover:bg-orange-50 focus:bg-orange-50 transition-colors" onClick={() => handleStatusChange(c.id, 'suspended')}>
+                                  <div className="p-1.5 bg-orange-100 rounded-lg"><ShieldAlert className="w-4 h-4 text-orange-600" /></div>
+                                  <span className="font-bold text-sm text-orange-900">Suspender Acceso</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator className="my-1" />
+                                <DropdownMenuItem className="gap-3 py-2.5 rounded-xl cursor-pointer hover:bg-red-50 focus:bg-red-50 group transition-colors" onClick={() => handleStatusChange(c.id, 'blocked')}>
+                                  <div className="p-1.5 bg-red-100 rounded-lg"><Ban className="w-4 h-4 text-red-600" /></div>
+                                  <span className="font-bold text-sm text-red-900">Bloquear Cuenta</span>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -248,6 +252,11 @@ function BillingContent() {
                     </div>
                   </div>
                 ))}
+                {history.length === 0 && (
+                  <div className="text-center py-10 text-muted-foreground">
+                    <p className="text-xs">No hay registros de cobros aún.</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
