@@ -8,6 +8,7 @@ import { db, User, UserRole } from '@/lib/db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Shield, Trash2, UserPlus, Camera, MapPin, User as UserIcon, Building2, Stethoscope, Briefcase, Clock, Circle, Edit2, CreditCard, Calendar, ShieldAlert } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -382,7 +383,7 @@ function UsersContent() {
                     {isSuperAdmin && (
                       <div className="flex items-center gap-1">
                         <Circle className={cn("w-2 h-2 fill-current", u.status === 'active' ? 'text-emerald-500' : 'text-slate-300')} />
-                        <span className="text-[10px] font-bold text-muted-foreground">{u.status === 'active' ? 'Activo' : 'Offline'}</span>
+                        <span className="text-[10px] font-bold text-muted-foreground">{u.status === 'active' ? 'Activo' : 'Desconectado'}</span>
                       </div>
                     )}
                    </div>
