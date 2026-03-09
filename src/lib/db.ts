@@ -2,7 +2,7 @@
 "use client";
 
 const DB_NAME = "KuskoDentoDB";
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 
 export type UserRole = 'admin' | 'clinic' | 'doctor' | 'assistant' | 'technician';
 
@@ -142,6 +142,17 @@ export interface PaymentMethod {
   qrImage?: string;
 }
 
+export interface InventoryItem {
+  id: string;
+  name: string;
+  category: string;
+  quantity: number;
+  minQuantity: number;
+  unit: string;
+  lastUpdated: string;
+  clinicId: string;
+}
+
 export class LocalDB {
   private db: IDBDatabase | null = null;
 
@@ -157,7 +168,7 @@ export class LocalDB {
         const stores = [
           'users', 'patients', 'treatments', 'patient_treatments', 'appointments', 
           'payments', 'radiographs', 'consents', 'odontograms', 'subscription_payments',
-          'payment_methods'
+          'payment_methods', 'inventory'
         ];
 
         stores.forEach(store => {
@@ -228,7 +239,7 @@ export class LocalDB {
 
   async exportData(): Promise<string> {
     await this.init();
-    const stores = ['users', 'patients', 'treatments', 'patient_treatments', 'appointments', 'payments', 'radiographs', 'consents', 'odontograms', 'subscription_payments', 'payment_methods'];
+    const stores = ['users', 'patients', 'treatments', 'patient_treatments', 'appointments', 'payments', 'radiographs', 'consents', 'odontograms', 'subscription_payments', 'payment_methods', 'inventory'];
     const data: any = {};
 
     for (const store of stores) {

@@ -4,8 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
-import { Users, UserSquare2, Stethoscope, Landmark, Activity, Calendar, Database, LogOut, LayoutDashboard, ShieldCheck, BarChart3, CreditCard, AlertTriangle, QrCode, Building2, ShieldAlert, Banknote, User as UserIcon, X, CheckCircle2, MessageCircle } from 'lucide-react';
-import Link from 'next/link';
+import { Users, UserSquare2, Stethoscope, Landmark, Activity, Calendar, Database, LogOut, LayoutDashboard, ShieldCheck, BarChart3, CreditCard, AlertTriangle, QrCode, Building2, ShieldAlert, Banknote, User as UserIcon, X, CheckCircle2, MessageCircle, Boxes } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -13,6 +12,7 @@ import { format, isAfter, parseISO, addDays } from 'date-fns';
 import { db, PaymentMethod } from '@/lib/db';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -57,6 +57,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { icon: Landmark, label: 'Pagos Pacientes', href: '/payments', show: !isAdmin && !isSuspended },
     { icon: Activity, label: 'Odontograma', href: '/odontogram', show: !isAdmin && !isSuspended },
     { icon: Calendar, label: 'Citas', href: '/appointments', show: !isAdmin && !isSuspended },
+    { icon: Boxes, label: 'Inventario', href: '/inventory', show: !isAdmin && !isSuspended },
     { icon: Database, label: 'Copia de Seguridad', href: '/backups', show: (isAdmin || isClinic) && !isSuspended },
     { icon: UserIcon, label: 'Mi Perfil', href: '/profile', show: true },
   ];

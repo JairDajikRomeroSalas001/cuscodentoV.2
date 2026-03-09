@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Users, UserSquare2, Stethoscope, Landmark, Activity, Calendar, Database, Database as DatabaseIcon, ShieldCheck, BarChart3, Clock, AlertCircle } from 'lucide-react';
+import { Users, UserSquare2, Stethoscope, Landmark, Activity, Calendar, Database, Database as DatabaseIcon, ShieldCheck, BarChart3, Clock, AlertCircle, Boxes } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { db, User, Patient, Appointment } from '@/lib/db';
 import Link from 'next/link';
@@ -152,6 +152,7 @@ function ClinicDashboard() {
     { icon: Landmark, title: 'Pagos', description: 'Control de abonos y saldos', href: '/payments', color: 'bg-emerald-500' },
     { icon: Activity, title: 'Odontograma', description: 'Esquema gráfico interactivo', href: '/odontogram', color: 'bg-indigo-500' },
     { icon: Calendar, title: 'Citas', description: 'Agenda de pacientes', href: '/appointments', color: 'bg-violet-500' },
+    { icon: Boxes, title: 'Inventario', description: 'Gestión de stock e insumos', href: '/inventory', color: 'bg-orange-500' },
     { icon: Users, title: 'Personal', description: 'Administración de acceso', href: '/admin/users', color: 'bg-slate-500' },
     { icon: DatabaseIcon, title: 'Respaldo', description: 'Backup y restauración', href: '/backups', color: 'bg-amber-500' },
   ];
