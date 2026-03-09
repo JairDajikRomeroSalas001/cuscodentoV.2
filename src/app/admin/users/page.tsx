@@ -16,7 +16,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { addMonths, format, parseISO } from 'date-fns';
+import { addMonths, format, parseISO, isValid } from 'date-fns';
 
 function UsersContent() {
   const { toast } = useToast();
@@ -51,8 +51,10 @@ function UsersContent() {
     if (currentUser?.role === 'admin' && form.contractStartDate && !editingId) {
       const installments = parseInt(form.advanceInstallments) || 1;
       const start = parseISO(form.contractStartDate);
-      const next = addMonths(start, installments);
-      setForm(prev => ({ ...prev, nextPaymentDate: format(next, 'yyyy-MM-dd') }));
+      if (isValid(start)) {
+        const next = addMonths(start, installments);
+        setForm(prev => ({ ...prev, nextPaymentDate: format(next, 'yyyy-MM-dd') }));
+      }
     }
   }, [form.contractStartDate, form.advanceInstallments, currentUser?.role, editingId]);
 
@@ -68,9 +70,20 @@ function UsersContent() {
     }
   };
 
+  const safeFormatDate = (dateStr?: string) => {
+    if (!dateStr) return '---';
+    if (dateStr.includes('/')) return dateStr;
+    try {
+      const parsed = parseISO(dateStr);
+      return isValid(parsed) ? format(parsed, 'dd/MM/yyyy') : dateStr;
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
   const handleValidateDni = async () => {
-    if (form.dni.length !== 8) {
-      toast({ variant: "destructive", title: "DNI Inválido", description: "El DNI debe tener 8 dígitos." });
+    if (form.dni.length < 8) {
+      toast({ variant: "destructive", title: "DNI Inválido", description: "El DNI debe tener al menos 8 dígitos." });
       return;
     }
 
@@ -333,7 +346,7 @@ function UsersContent() {
                               <div>
                                 <p className="text-[10px] font-black uppercase text-muted-foreground mb-1">Primer Vencimiento (DD/MM/AAAA)</p>
                                 <p className="text-lg font-bold text-primary">
-                                  {form.nextPaymentDate ? format(parseISO(form.nextPaymentDate), 'dd/MM/yyyy') : '---'}
+                                  {safeFormatDate(form.nextPaymentDate)}
                                 </p>
                               </div>
                               <Calendar className="w-8 h-8 text-primary/20" />
@@ -455,7 +468,7 @@ function UsersContent() {
                       </p>
                       <p className="flex justify-between">
                         <span className="font-bold text-muted-foreground uppercase">Vencimiento:</span> 
-                        <b className="text-red-600 font-bold">{u.nextPaymentDate ? format(parseISO(u.nextPaymentDate), 'dd/MM/yyyy') : 'Pendiente'}</b>
+                        <b className="text-red-600 font-bold">{safeFormatDate(u.nextPaymentDate)}</b>
                       </p>
                    </div>
                  )}

@@ -8,13 +8,14 @@ import { db, Payment, Patient, Appointment } from '@/lib/db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Search, Filter, ChevronLeft, ChevronRight, HandCoins } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, HandCoins } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 const PAGE_SIZE = 10;
 
@@ -84,6 +85,17 @@ function PaymentsContent() {
       setNewAmo(0);
       toast({ title: "Abono registrado", description: `Nuevo saldo: S/. ${newBalance.toFixed(2)}` });
       load();
+    }
+  };
+
+  const safeFormatDate = (dateStr: string) => {
+    if (!dateStr) return '---';
+    if (dateStr.includes('/')) return dateStr;
+    try {
+      const parsed = parseISO(dateStr);
+      return isValid(parsed) ? format(parsed, 'dd/MM/yyyy') : dateStr;
+    } catch (e) {
+      return dateStr;
     }
   };
 
@@ -159,7 +171,7 @@ function PaymentsContent() {
                     </TableCell>
                     <TableCell>
                       <div className="font-medium text-[11px] uppercase truncate max-w-[150px]">{p.treatmentName}</div>
-                      <div className="text-[10px] text-muted-foreground">{format(parseISO(p.date), 'dd/MM/yyyy')}</div>
+                      <div className="text-[10px] text-muted-foreground">{safeFormatDate(p.date)}</div>
                     </TableCell>
                     <TableCell className="text-sm">S/. {p.totalCost.toFixed(2)}</TableCell>
                     <TableCell className="font-bold text-emerald-600 text-sm">S/. {p.totalPaid.toFixed(2)}</TableCell>

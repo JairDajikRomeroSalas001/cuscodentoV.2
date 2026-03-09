@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { format, isAfter, parseISO, addDays, addMonths } from 'date-fns';
+import { format, isAfter, parseISO, addDays, addMonths, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -49,7 +49,7 @@ function BillingContent() {
     if (selectedClinic && installments) {
       const currentExpiry = selectedClinic.nextPaymentDate ? parseISO(selectedClinic.nextPaymentDate) : new Date();
       const num = parseInt(installments) || 1;
-      const calculatedNext = addMonths(currentExpiry, num);
+      const calculatedNext = addMonths(isValid(currentExpiry) ? currentExpiry : new Date(), num);
       
       setNextDate(format(calculatedNext, 'yyyy-MM-dd'));
       setPayAmount(((selectedClinic.subscriptionFee || 0) * num).toString());
@@ -65,6 +65,17 @@ function BillingContent() {
     setPaymentMethods(allMethods);
   };
 
+  const safeFormatDate = (dateStr?: string) => {
+    if (!dateStr) return '---';
+    if (dateStr.includes('/')) return dateStr;
+    try {
+      const parsed = parseISO(dateStr);
+      return isValid(parsed) ? format(parsed, 'dd/MM/yyyy') : dateStr;
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
   const handleRegisterPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClinic || !currentUser) return;
@@ -75,7 +86,7 @@ function BillingContent() {
       clinicName: selectedClinic.fullName || selectedClinic.username || 'Clínica',
       amount: parseFloat(payAmount),
       date: new Date().toISOString().split('T')[0],
-      concept: `Renovación: ${installments} cuota(s) mensuales. Próximo vencimiento: ${format(parseISO(nextDate), 'dd/MM/yyyy')}`,
+      concept: `Renovación: ${installments} cuota(s) mensuales. Próximo vencimiento: ${safeFormatDate(nextDate)}`,
       processedByAdminId: currentUser.username
     };
 
@@ -91,7 +102,7 @@ function BillingContent() {
     setIsPayOpen(false);
     toast({ 
       title: "Pago registrado con éxito", 
-      description: `Acceso extendido hasta el ${format(parseISO(nextDate), "dd/MM/yyyy")}` 
+      description: `Acceso extendido hasta el ${safeFormatDate(nextDate)}` 
     });
     setInstallments('1');
     load();
@@ -132,11 +143,16 @@ function BillingContent() {
   const getCalculatedStatus = (clinic: User) => {
     if (clinic.subscriptionStatus === 'blocked') return 'blocked';
     if (!clinic.nextPaymentDate) return 'active';
-    const next = parseISO(clinic.nextPaymentDate);
-    const today = new Date();
-    if (isAfter(today, addDays(next, 10))) return 'suspended';
-    if (isAfter(today, next)) return 'overdue';
-    return 'active';
+    try {
+      const next = parseISO(clinic.nextPaymentDate);
+      if (!isValid(next)) return 'active';
+      const today = new Date();
+      if (isAfter(today, addDays(next, 10))) return 'suspended';
+      if (isAfter(today, next)) return 'overdue';
+      return 'active';
+    } catch (e) {
+      return 'active';
+    }
   };
 
   const handleStatusChange = async (clinicId: string, newStatus: 'active' | 'suspended' | 'blocked') => {
@@ -211,7 +227,7 @@ function BillingContent() {
                               <p className="text-[10px] text-muted-foreground uppercase font-medium">Costo: S/. {c.subscriptionFee}</p>
                             </TableCell>
                             <TableCell className="text-xs font-semibold">
-                              {c.nextPaymentDate ? format(parseISO(c.nextPaymentDate), "dd/MM/yyyy") : 'Pendiente'}
+                              {safeFormatDate(c.nextPaymentDate)}
                             </TableCell>
                             <TableCell>
                               <Badge 
@@ -297,7 +313,7 @@ function BillingContent() {
                         </div>
                         <div className="text-right shrink-0">
                           <p className="font-bold text-xs text-emerald-600">S/. {h.amount.toFixed(2)}</p>
-                          <p className="text-[9px] text-muted-foreground">{format(parseISO(h.date), 'dd/MM/yyyy')}</p>
+                          <p className="text-[9px] text-muted-foreground">{safeFormatDate(h.date)}</p>
                         </div>
                       </div>
                     ))}
@@ -401,7 +417,7 @@ function BillingContent() {
                   <RefreshCcw className="w-5 h-5 text-emerald-600" />
                   <div>
                     <p className="text-[10px] font-bold text-emerald-800 uppercase leading-none">Nueva Vigencia</p>
-                    <p className="text-sm font-bold text-emerald-600 mt-1">{nextDate ? format(parseISO(nextDate), "dd/MM/yyyy") : '---'}</p>
+                    <p className="text-sm font-bold text-emerald-600 mt-1">{safeFormatDate(nextDate)}</p>
                   </div>
                 </div>
               </div>
