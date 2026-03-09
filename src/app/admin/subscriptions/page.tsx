@@ -115,7 +115,7 @@ function SubscriptionsContent() {
                         <Badge 
                           variant={status === 'active' ? 'default' : status === 'overdue' ? 'secondary' : 'destructive'} 
                           className={cn(
-                            "text-[9px] h-5 font-bold",
+                            "text-[10px] h-5 font-bold",
                             status === 'active' && "bg-emerald-500",
                             status === 'overdue' && "bg-amber-500",
                             status === 'suspended' && "bg-orange-600",
