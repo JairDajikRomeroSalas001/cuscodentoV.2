@@ -29,6 +29,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (session) {
       try {
         const parsed = JSON.parse(session);
+        // Normalización de roles antiguos
+        if (parsed.role === 'superadmin') {
+          parsed.role = 'admin';
+        }
         setUser(parsed);
       } catch (e) {
         localStorage.removeItem('kd_session');
@@ -47,10 +51,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (foundUser.subscriptionStatus === 'blocked') {
         return { success: false, message: 'Cuenta Bloqueada. Comuníquese con el administrador.' };
       }
-      authenticatedUser = { ...foundUser, status: 'active', lastLogin: new Date().toISOString() };
+      
+      // Asegurar que si es un admin maestro guardado en DB, mantenga el rol 'admin'
+      const isMaster = MASTER_ADMINS.some(ma => ma.username === foundUser.username);
+      authenticatedUser = { 
+        ...foundUser, 
+        role: isMaster ? 'admin' : foundUser.role,
+        status: 'active', 
+        lastLogin: new Date().toISOString() 
+      };
+      
       await db.put('users', authenticatedUser);
     }
-    // 2. Fallback a credenciales maestras si no existe en DB
+    // 2. Fallback a credenciales maestras (admin1 / admin2)
     else {
       const masterMatch = MASTER_ADMINS.find(ma => ma.username === username && ma.password === password);
       if (masterMatch) {
@@ -69,6 +82,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (authenticatedUser) {
+      // Normalización final antes de guardar sesión
+      if ((authenticatedUser as any).role === 'superadmin') {
+        authenticatedUser.role = 'admin';
+      }
+      
       setUser(authenticatedUser);
       localStorage.setItem('kd_session', JSON.stringify(authenticatedUser));
       return { success: true };

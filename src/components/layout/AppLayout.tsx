@@ -97,23 +97,25 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </SidebarMenu>
           </SidebarContent>
           <div className="mt-auto p-6 border-t">
-            <div className="mb-4 px-2">
-              <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Estado de Cuenta</p>
-              <Badge 
-                variant={currentStatus === 'active' ? 'default' : 'destructive'} 
-                className={cn(
-                  "w-full justify-center py-1",
-                  isOverdue && "bg-amber-500 hover:bg-amber-600"
+            {!isAdmin && (
+              <div className="mb-4 px-2">
+                <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Estado de Cuenta</p>
+                <Badge 
+                  variant={currentStatus === 'active' ? 'default' : 'destructive'} 
+                  className={cn(
+                    "w-full justify-center py-1",
+                    isOverdue && "bg-amber-500 hover:bg-amber-600"
+                  )}
+                >
+                  {isBlocked ? 'BLOQUEADA' : isSuspended ? 'SUSPENDIDA' : isOverdue ? 'MORA' : 'ACTIVA'}
+                </Badge>
+                {user.nextPaymentDate && (
+                  <p className="text-[9px] text-center mt-2 text-muted-foreground font-bold">
+                    Vence: {format(parseISO(user.nextPaymentDate), 'dd/MM/yyyy')}
+                  </p>
                 )}
-              >
-                {isBlocked ? 'BLOQUEADA' : isSuspended ? 'SUSPENDIDA' : isOverdue ? 'MORA' : 'ACTIVA'}
-              </Badge>
-              {user.nextPaymentDate && (
-                <p className="text-[9px] text-center mt-2 text-muted-foreground font-bold">
-                  Vence: {format(parseISO(user.nextPaymentDate), 'dd/MM/yyyy')}
-                </p>
-              )}
-            </div>
+              </div>
+            )}
             <button 
               onClick={logout}
               className="flex items-center gap-3 text-destructive hover:bg-destructive/10 w-full p-2 rounded-md transition-colors"
@@ -137,7 +139,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-3 px-2">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-bold">{user.fullName || user.username}</p>
-                <p className="text-[10px] text-muted-foreground uppercase">{user.role}</p>
+                <p className="text-[10px] text-muted-foreground uppercase">{isAdmin ? 'Administrador' : user.role}</p>
               </div>
               <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold">
                 {(user.fullName || user.username).charAt(0).toUpperCase()}
