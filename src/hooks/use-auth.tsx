@@ -22,7 +22,7 @@ const MASTER_ADMINS = [
 ];
 
 const MAX_ATTEMPTS = 3;
-const LOCKOUT_MS = 2 * 60 * 1000; // 2 minutos
+const LOCKOUT_MS = 2 * 60 * 1000; 
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -31,32 +31,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    const session = localStorage.getItem('kd_session');
-    if (session) {
-      try {
-        const parsed = JSON.parse(session);
-        setUser(parsed);
-      } catch (e) {
-        localStorage.removeItem('kd_session');
+    const initAuth = async () => {
+      const session = localStorage.getItem('kd_session');
+      if (session) {
+        try {
+          const parsed = JSON.parse(session);
+          setUser(parsed);
+        } catch (e) {
+          localStorage.removeItem('kd_session');
+        }
       }
-    }
 
-    const storedLockout = localStorage.getItem('kd_lockout_until');
-    if (storedLockout) {
-      const until = parseInt(storedLockout);
-      if (until > Date.now()) {
-        setLockoutUntil(until);
-      } else {
-        localStorage.removeItem('kd_lockout_until');
-        localStorage.removeItem('kd_failed_attempts');
+      const storedLockout = localStorage.getItem('kd_lockout_until');
+      if (storedLockout) {
+        const until = parseInt(storedLockout);
+        if (until > Date.now()) {
+          setLockoutUntil(until);
+        } else {
+          localStorage.removeItem('kd_lockout_until');
+          localStorage.removeItem('kd_failed_attempts');
+        }
       }
-    }
-
-    setIsLoading(false);
+      setIsLoading(false);
+    };
+    initAuth();
   }, []);
 
   const login = async (username: string, password: string) => {
-    // Verificar si el sistema está bloqueado
     const now = Date.now();
     if (now < lockoutUntil) {
       const remaining = Math.ceil((lockoutUntil - now) / 1000);
@@ -64,10 +65,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         success: false, 
         message: `Sistema bloqueado por seguridad. Intente en ${remaining} segundos.` 
       };
-    }
-
-    if (username.toLowerCase() === 'superadmin') {
-      return { success: false, message: 'Acceso Denegado: Usuario no autorizado.' };
     }
 
     const masterMatch = MASTER_ADMINS.find(ma => ma.username === username && ma.password === password);
@@ -91,7 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const foundUser = allUsers.find(u => u.username === username && u.password === password);
       
       if (foundUser) {
-        if (foundUser.role === 'admin') {
+        if (foundUser.role === 'admin' && !MASTER_ADMINS.some(m => m.username === username)) {
           return { success: false, message: 'Acceso Denegado: Credenciales administrativas no autorizadas.' };
         }
 
@@ -112,14 +109,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (authenticatedUser) {
       setUser(authenticatedUser);
       localStorage.setItem('kd_session', JSON.stringify(authenticatedUser));
-      // Limpiar rastro de fallos al entrar con éxito
       localStorage.removeItem('kd_failed_attempts');
       localStorage.removeItem('kd_lockout_until');
       setLockoutUntil(0);
       return { success: true };
     }
     
-    // Si llegamos aquí, las credenciales son incorrectas
     const attempts = parseInt(localStorage.getItem('kd_failed_attempts') || '0') + 1;
     localStorage.setItem('kd_failed_attempts', attempts.toString());
 

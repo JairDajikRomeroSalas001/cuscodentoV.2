@@ -67,18 +67,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const isBlocked = currentStatus === 'blocked';
   const isOverdue = currentStatus === 'overdue';
 
-  // SECURITY: Router Protection
   useEffect(() => {
     if (user) {
       const adminRoutes = ['/admin/reports', '/admin/subscriptions', '/admin/billing'];
       const clinicOnlyRoutes = ['/backups', '/admin/users'];
       
-      if (!isAdmin && adminRoutes.some(route => pathname.startsWith(item => item === route || pathname === route))) {
-         const restricted = adminRoutes.some(r => pathname.startsWith(r));
-         if (restricted) router.push('/dashboard');
+      if (!isAdmin && adminRoutes.some(route => pathname.startsWith(route))) {
+         router.push('/dashboard');
       }
 
-      if (user.role !== 'clinic' && !isAdmin && clinicOnlyRoutes.some(r => pathname.startsWith(r))) {
+      if (user.role !== 'clinic' && !isAdmin && clinicOnlyRoutes.some(route => pathname.startsWith(route))) {
          router.push('/dashboard');
       }
     }
