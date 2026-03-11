@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
 import { Users, UserSquare2, Stethoscope, Landmark, Activity, Calendar, Database, LogOut, LayoutDashboard, ShieldCheck, BarChart3, CreditCard, AlertTriangle, QrCode, Building2, ShieldAlert, Banknote, User as UserIcon, X, MessageCircle, Boxes, Wallet, Timer, AlertCircle, Sun, Moon, Laptop, Sparkles } from 'lucide-react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { format, isAfter, parseISO, addDays } from 'date-fns';
@@ -44,6 +44,7 @@ function hexToHsl(hex: string) {
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, logout, updateUser } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
   
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
@@ -65,6 +66,23 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const isSuspended = currentStatus === 'suspended';
   const isBlocked = currentStatus === 'blocked';
   const isOverdue = currentStatus === 'overdue';
+
+  // SECURITY: Router Protection
+  useEffect(() => {
+    if (user) {
+      const adminRoutes = ['/admin/reports', '/admin/subscriptions', '/admin/billing'];
+      const clinicOnlyRoutes = ['/backups', '/admin/users'];
+      
+      if (!isAdmin && adminRoutes.some(route => pathname.startsWith(item => item === route || pathname === route))) {
+         const restricted = adminRoutes.some(r => pathname.startsWith(r));
+         if (restricted) router.push('/dashboard');
+      }
+
+      if (user.role !== 'clinic' && !isAdmin && clinicOnlyRoutes.some(r => pathname.startsWith(r))) {
+         router.push('/dashboard');
+      }
+    }
+  }, [pathname, user, isAdmin, router]);
 
   useEffect(() => {
     if (user && (user.role === 'clinic' || user.role === 'doctor')) {

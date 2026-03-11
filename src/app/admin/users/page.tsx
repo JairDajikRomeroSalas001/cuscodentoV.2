@@ -62,6 +62,7 @@ function UsersContent() {
     if (!currentUser) return;
     const all = await db.getAll<User>('users');
     
+    // SECURITY: Ensure data isolation
     if (currentUser.role === 'admin') {
       setUsers(all.filter(u => u.role === 'clinic'));
     } 
@@ -83,11 +84,12 @@ function UsersContent() {
 
   const handleValidateDni = async () => {
     if (form.dni.length < 8) {
-      toast({ variant: "destructive", title: "DNI Inválido", description: "El DNI debe tener al menos 8 dígitos." });
+      toast({ variant: "destructive", title: "Documento Inválido", description: "El número debe tener al menos 8 dígitos." });
       return;
     }
 
     setIsValidatingDni(true);
+    // Simulación de validación RENIEC/SUNAT con seguridad
     setTimeout(() => {
       setIsValidatingDni(false);
       const simulatedData: Record<string, string> = {
@@ -99,8 +101,8 @@ function UsersContent() {
       const foundName = simulatedData[form.dni] || "NOMBRES RECUPERADOS DE RENIEC";
       setForm(prev => ({ ...prev, fullName: foundName }));
       toast({ 
-        title: "DNI Validado", 
-        description: "Datos recuperados correctamente de la base de datos de RENIEC." 
+        title: "Identidad Validada", 
+        description: "Datos recuperados correctamente de la base de datos oficial." 
       });
     }, 1500);
   };
@@ -108,6 +110,10 @@ function UsersContent() {
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        toast({ variant: "destructive", title: "Archivo demasiado grande", description: "El límite es 2MB." });
+        return;
+      }
       const reader = new FileReader();
       reader.onloadend = () => setPhotoPreview(reader.result as string);
       reader.readAsDataURL(file);
@@ -123,7 +129,7 @@ function UsersContent() {
     const newUser: User = {
       id: editingId || crypto.randomUUID(),
       username: isAdmin ? form.username : undefined,
-      password: isAdmin ? form.password : undefined,
+      password: isAdmin ? form.password : (editingId ? users.find(u => u.id === editingId)?.password : '123456'), // Default pass for staff
       fullName: form.fullName,
       dni: form.dni,
       address: form.address,
@@ -184,8 +190,9 @@ function UsersContent() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('¿Eliminar este registro?')) {
+    if (confirm('¿ELIMINAR REGISTRO? Esta acción es definitiva.')) {
       await db.delete('users', id);
+      toast({ title: "Registro eliminado", variant: "destructive" });
       load();
     }
   };
@@ -222,13 +229,13 @@ function UsersContent() {
       <div className="space-y-6 max-w-6xl mx-auto">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-3xl font-bold text-primary">
-              {isAdmin ? 'Gestión de Consultorios' : 'Gestión de Personal'}
+            <h2 className="text-3xl font-black text-primary tracking-tight">
+              {isAdmin ? 'Gestión de Red' : 'Administración de Personal'}
             </h2>
-            <p className="text-muted-foreground mt-1">
+            <p className="text-muted-foreground mt-1 font-medium">
               {isAdmin 
-                ? 'Panel de control de acceso y suscripciones' 
-                : 'Administra el personal clínico de tu consultorio'}
+                ? 'Control maestro de acceso y suscripciones de consultorios' 
+                : 'Administra los roles y accesos de tu equipo clínico'}
             </p>
           </div>
           <Dialog open={isOpen} onOpenChange={(val) => {
@@ -236,102 +243,105 @@ function UsersContent() {
             if (!val) resetForm();
           }}>
             <DialogTrigger asChild>
-              <Button className="gap-2 h-12 px-6 shadow-lg shadow-primary/20">
-                <UserPlus className="w-5 h-5" />
-                {isAdmin ? 'Nuevo Consultorio' : 'Nuevo Personal'}
+              <Button className="gap-2 h-14 px-8 shadow-2xl shadow-primary/20 text-lg font-black rounded-2xl">
+                <UserPlus className="w-6 h-6" />
+                {isAdmin ? 'Nuevo Consultorio' : 'Añadir Colaborador'}
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto rounded-3xl">
-              <DialogHeader>
-                <DialogTitle className="text-2xl font-bold flex items-center gap-3">
-                  <Building2 className="text-primary w-8 h-8" />
-                  {editingId ? 'Editar Registro' : isAdmin ? 'Registrar Nuevo Consultorio' : 'Registrar Personal'}
+            <DialogContent className="sm:max-w-[850px] max-h-[90vh] overflow-y-auto rounded-[2.5rem] border-none shadow-2xl">
+              <DialogHeader className="p-6 pb-0">
+                <DialogTitle className="text-3xl font-black flex items-center gap-4">
+                  <div className="p-3 bg-primary/10 rounded-2xl text-primary">
+                    {isAdmin ? <Building2 className="w-8 h-8" /> : <UserIcon className="w-8 h-8" />}
+                  </div>
+                  {editingId ? 'Editar Registro' : isAdmin ? 'Registrar Consultorio' : 'Añadir al Equipo'}
                 </DialogTitle>
-                <DialogDescription>
-                  Complete la ficha técnica del establecimiento o personal (Estándar regional DD/MM/AAAA)
+                <DialogDescription className="text-base font-bold pt-2">
+                  Complete la ficha técnica oficial (Estándar regional Cusco DD/MM/AAAA)
                 </DialogDescription>
               </DialogHeader>
-              <form onSubmit={handleSave} className="space-y-8 py-6">
+              <form onSubmit={handleSave} className="space-y-10 p-6">
                 <div className="flex justify-center">
-                  <div className="relative">
-                    <Avatar className="w-28 h-28 border-4 border-primary/10 shadow-xl">
-                      <AvatarImage src={photoPreview || ''} />
-                      <AvatarFallback className="bg-primary/5 text-primary text-3xl">
-                        {isAdmin ? <Building2 className="w-12 h-12" /> : <UserIcon className="w-12 h-12" />}
+                  <div className="relative group">
+                    <Avatar className="w-32 h-32 border-4 border-white dark:border-slate-800 shadow-2xl ring-4 ring-primary/10 transition-transform group-hover:scale-105">
+                      <AvatarImage src={photoPreview || ''} className="object-cover" />
+                      <AvatarFallback className="bg-slate-50 text-primary text-4xl font-black">
+                        {isAdmin ? <Building2 className="w-14 h-14" /> : <UserIcon className="w-14 h-14" />}
                       </AvatarFallback>
                     </Avatar>
-                    <label className="absolute bottom-1 right-1 p-2.5 bg-primary rounded-full text-white cursor-pointer hover:bg-primary/90 transition-all shadow-lg hover:scale-110 active:scale-95">
-                      <Camera className="w-5 h-5" />
+                    <label className="absolute -bottom-2 -right-2 p-3 bg-primary rounded-2xl text-white cursor-pointer hover:bg-primary/90 transition-all shadow-xl hover:scale-110 active:scale-90 ring-4 ring-white dark:ring-slate-800">
+                      <Camera className="w-6 h-6" />
                       <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
                     </label>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2 col-span-1">
-                    <Label htmlFor="dni" className="font-bold flex items-center gap-2">
-                      DNI / RUC del Titular
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-3 col-span-1">
+                    <Label htmlFor="dni" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                      DNI / RUC del Responsable
                     </Label>
-                    <div className="flex gap-2">
+                    <div className="flex gap-3">
                       <div className="relative flex-1">
-                        <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                        <Input id="dni" value={form.dni} onChange={e => setForm({...form, dni: e.target.value})} maxLength={11} className="pl-10 h-11" placeholder="Ej: 45678901" />
+                        <Search className="absolute left-4 top-3.5 w-5 h-5 text-muted-foreground" />
+                        <Input id="dni" value={form.dni} onChange={e => setForm({...form, dni: e.target.value.replace(/\D/g, '').slice(0, 11)})} maxLength={11} className="pl-12 h-12 rounded-xl bg-slate-50 border-none shadow-inner text-lg font-bold" placeholder="45678901" />
                       </div>
                       <Button 
                         type="button" 
                         onClick={handleValidateDni} 
                         disabled={isValidatingDni || form.dni.length < 8}
                         variant="secondary"
-                        className="h-11 gap-2 border-primary/20 hover:bg-primary/10"
+                        className="h-12 gap-2 px-6 rounded-xl font-black shadow-lg shadow-slate-200/50"
                       >
-                        {isValidatingDni ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                        Validar DNI
+                        {isValidatingDni ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
+                        VALIDAR
                       </Button>
                     </div>
                   </div>
 
-                  <div className="space-y-2 col-span-1">
-                    <Label htmlFor="fullName" className="font-bold">
-                      {isAdmin ? 'Nombre Comercial del Consultorio' : 'Nombre Completo'}
+                  <div className="space-y-3 col-span-1">
+                    <Label htmlFor="fullName" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                      {isAdmin ? 'Nombre Comercial / Razón Social' : 'Nombre Completo del Personal'}
                     </Label>
-                    <Input id="fullName" value={form.fullName} onChange={e => setForm({...form, fullName: e.target.value})} required className="h-11" placeholder="Se completará al validar DNI" />
+                    <Input id="fullName" value={form.fullName} onChange={e => setForm({...form, fullName: e.target.value})} required className="h-12 rounded-xl bg-slate-50 border-none shadow-inner text-lg font-black text-primary" placeholder="Se completará automáticamente" />
                   </div>
                   
                   {isAdmin && (
                     <>
-                      <div className="space-y-2">
-                        <Label htmlFor="username" className="font-bold">Usuario de Acceso</Label>
-                        <Input id="username" value={form.username} onChange={e => setForm({...form, username: e.target.value})} required={isAdmin} className="h-11" />
+                      <div className="space-y-3">
+                        <Label htmlFor="username" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">ID de Usuario</Label>
+                        <Input id="username" value={form.username} onChange={e => setForm({...form, username: e.target.value})} required={isAdmin} className="h-12 rounded-xl bg-slate-50 border-none shadow-inner font-bold" />
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="password" className="font-bold">Contraseña de Seguridad</Label>
-                        <Input id="password" type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} required={isAdmin} className="h-11" />
+                      <div className="space-y-3">
+                        <Label htmlFor="password" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Clave de Seguridad</Label>
+                        <Input id="password" type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} required={isAdmin} className="h-12 rounded-xl bg-slate-50 border-none shadow-inner" />
                       </div>
 
-                      <div className="col-span-full border-t border-dashed pt-6">
-                        <div className="bg-primary/5 p-6 rounded-3xl border border-primary/10 space-y-6">
-                          <h4 className="text-md font-bold text-primary flex items-center gap-2">
-                            <CreditCard className="w-5 h-5" /> Configuración de Contrato y Suscripción
+                      <div className="col-span-full border-t border-dashed pt-10">
+                        <div className="bg-primary/5 p-8 rounded-[2rem] border border-primary/10 space-y-8">
+                          <h4 className="text-lg font-black text-primary flex items-center gap-3">
+                            <div className="p-2 bg-primary text-white rounded-lg"><CreditCard className="w-5 h-5" /></div> 
+                            Configuración de Suscripción y Pago Inicial
                           </h4>
                           
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="space-y-2">
-                              <Label className="font-bold text-xs">Fecha de Inicio de Contrato</Label>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                            <div className="space-y-3">
+                              <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Fecha de Activación</Label>
                               <div className="relative">
-                                <Calendar className="absolute left-3 top-3 w-4 h-4 text-primary" />
-                                <Input type="date" value={form.contractStartDate} onChange={e => setForm({...form, contractStartDate: e.target.value})} className="h-11 pl-10" />
+                                <Calendar className="absolute left-4 top-3.5 w-5 h-5 text-primary" />
+                                <Input type="date" value={form.contractStartDate} onChange={e => setForm({...form, contractStartDate: e.target.value})} className="h-12 pl-12 rounded-xl border-none shadow-inner font-bold" />
                               </div>
                             </div>
                             
-                            <div className="space-y-2">
-                              <Label className="font-bold text-xs">Costo Mensual (S/.)</Label>
-                              <Input type="number" step="0.01" value={form.subscriptionFee} onChange={e => setForm({...form, subscriptionFee: e.target.value})} className="h-11 font-bold" />
+                            <div className="space-y-3">
+                              <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Costo de Membresía (S/.)</Label>
+                              <Input type="number" step="0.01" value={form.subscriptionFee} onChange={e => setForm({...form, subscriptionFee: e.target.value})} className="h-12 rounded-xl border-none shadow-inner font-black text-xl" />
                             </div>
 
-                            <div className="space-y-2">
-                              <Label className="font-bold text-xs">Meses Pagados por Adelantado</Label>
+                            <div className="space-y-3">
+                              <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Cuotas Adelantadas</Label>
                               <Select value={form.advanceInstallments} onValueChange={(v: any) => setForm({...form, advanceInstallments: v})}>
-                                <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                                <SelectTrigger className="h-12 rounded-xl border-none shadow-inner font-bold"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   {installmentOptions.map(n => (
                                     <SelectItem key={n} value={n.toString()}>{n} mes(es)</SelectItem>
@@ -341,38 +351,38 @@ function UsersContent() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="p-4 bg-white rounded-2xl border border-primary/10 flex items-center justify-between">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="p-6 bg-white dark:bg-slate-900 rounded-3xl border shadow-sm flex items-center justify-between">
                               <div>
-                                <p className="text-[10px] font-black uppercase text-muted-foreground mb-1">Primer Vencimiento (DD/MM/AAAA)</p>
-                                <p className="text-lg font-bold text-primary">
+                                <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-1">Primer Vencimiento Programado</p>
+                                <p className="text-2xl font-black text-primary">
                                   {safeFormatDate(form.nextPaymentDate)}
                                 </p>
                               </div>
-                              <Calendar className="w-8 h-8 text-primary/20" />
+                              <Calendar className="w-10 h-10 text-primary/20" />
                             </div>
 
-                            <div className="p-4 bg-primary text-white rounded-2xl shadow-lg shadow-primary/20 flex items-center justify-between">
+                            <div className="p-6 bg-primary text-white rounded-3xl shadow-xl shadow-primary/20 flex items-center justify-between">
                               <div>
-                                <p className="text-[10px] font-black uppercase opacity-80 mb-1">Inversión Inicial Total</p>
-                                <p className="text-xl font-bold">S/. {totalInformational.toFixed(2)}</p>
+                                <p className="text-[10px] font-black uppercase opacity-80 tracking-widest mb-1">Inversión Inicial Recibida</p>
+                                <p className="text-3xl font-black">S/. {totalInformational.toFixed(2)}</p>
                               </div>
-                              <CheckCircle2 className="w-8 h-8 opacity-40" />
+                              <CheckCircle2 className="w-10 h-10 opacity-40" />
                             </div>
                           </div>
 
-                          <div className="space-y-2">
-                            <Label className="font-bold text-xs flex items-center gap-2">
-                              <ShieldAlert className="w-4 h-4 text-amber-500" /> Estado Inicial de Acceso
+                          <div className="space-y-3">
+                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                              <ShieldAlert className="w-4 h-4 text-amber-500" /> Estado de Acceso al Sistema
                             </Label>
                             <Select value={form.subscriptionStatus} onValueChange={(v: any) => setForm({...form, subscriptionStatus: v})}>
-                              <SelectTrigger className="h-11 bg-white">
+                              <SelectTrigger className="h-12 rounded-xl border-none shadow-inner font-black bg-white dark:bg-slate-950">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="active">Activa (Acceso Inmediato)</SelectItem>
-                                <SelectItem value="suspended">Suspendida (Requiere Pago)</SelectItem>
-                                <SelectItem value="blocked">Bloqueada (Inhabilitar Permanente)</SelectItem>
+                                <SelectItem value="active" className="font-bold text-emerald-600">ACTIVA (Acceso Completo)</SelectItem>
+                                <SelectItem value="suspended" className="font-bold text-amber-600">SUSPENDIDA (Bloqueo Preventivo)</SelectItem>
+                                <SelectItem value="blocked" className="font-bold text-red-600">BLOQUEADA (Baja Definitiva)</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
@@ -382,41 +392,41 @@ function UsersContent() {
                   )}
 
                   {!isAdmin && (
-                    <div className="space-y-2 col-span-full">
-                      <Label htmlFor="role" className="font-bold">Cargo / Función Clínica</Label>
+                    <div className="space-y-3 col-span-full">
+                      <Label htmlFor="role" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Cargo / Especialidad Clínica</Label>
                       <Select value={form.role} onValueChange={(v: any) => setForm({...form, role: v})}>
-                        <SelectTrigger className="h-11">
+                        <SelectTrigger className="h-12 rounded-xl border-none shadow-inner font-bold bg-slate-50">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="doctor">Médico Odontólogo(a)</SelectItem>
                           <SelectItem value="assistant">Asistente Dental / Higienista</SelectItem>
-                          <SelectItem value="technician">Técnico Dental / Especialista</SelectItem>
+                          <SelectItem value="technician">Técnico Dental / Laboratorista</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   )}
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="colegiatura" className="font-bold">N° Colegiatura / Registro Profesional</Label>
+                  <div className="space-y-3">
+                    <Label htmlFor="colegiatura" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">N° de Colegiatura / Registro</Label>
                     <div className="relative">
-                      <Stethoscope className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                      <Input id="colegiatura" value={form.colegiatura} onChange={e => setForm({...form, colegiatura: e.target.value})} required={!isAdmin && form.role === 'doctor'} className="pl-10 h-11" placeholder="Ej: COP 12345" />
+                      <Stethoscope className="absolute left-4 top-3.5 w-5 h-5 text-muted-foreground" />
+                      <Input id="colegiatura" value={form.colegiatura} onChange={e => setForm({...form, colegiatura: e.target.value})} required={!isAdmin && form.role === 'doctor'} className="pl-12 h-12 rounded-xl bg-slate-50 border-none shadow-inner font-bold" placeholder="COP 12345" />
                     </div>
                   </div>
 
-                  <div className="space-y-2 col-span-1">
-                    <Label htmlFor="address" className="font-bold">Dirección del Establecimiento</Label>
+                  <div className="space-y-3 col-span-1">
+                    <Label htmlFor="address" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Ubicación / Consultorio</Label>
                     <div className="relative">
-                      <MapPin className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                      <Input id="address" className="pl-10 h-11" value={form.address} onChange={e => setForm({...form, address: e.target.value})} placeholder="Ej: Av. El Sol 123, Cusco" />
+                      <MapPin className="absolute left-4 top-3.5 w-5 h-5 text-muted-foreground" />
+                      <Input id="address" className="pl-12 h-12 rounded-xl bg-slate-50 border-none shadow-inner font-bold" value={form.address} onChange={e => setForm({...form, address: e.target.value})} placeholder="Ej: Av. El Sol 123, Cusco" />
                     </div>
                   </div>
                 </div>
 
                 <DialogFooter className="pt-8 border-t">
-                  <Button type="submit" className="w-full h-14 text-lg font-bold rounded-2xl shadow-xl shadow-primary/20 transition-all hover:scale-[1.02]">
-                    {editingId ? 'Actualizar Información' : 'Registrar Consultorio y Activar Servicio'}
+                  <Button type="submit" className="w-full h-16 text-xl font-black rounded-[1.5rem] shadow-2xl shadow-primary/30 transition-transform active:scale-95">
+                    {editingId ? 'ACTUALIZAR INFORMACIÓN' : 'REGISTRAR Y ACTIVAR SERVICIO'}
                   </Button>
                 </DialogFooter>
               </form>
@@ -426,73 +436,71 @@ function UsersContent() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {users.map((u) => (
-            <Card key={u.id} className="border-none shadow-sm hover:shadow-xl transition-all group overflow-hidden bg-white/50 backdrop-blur-sm">
-               <div className={cn("h-2", u.subscriptionStatus === 'active' ? 'bg-emerald-500' : u.subscriptionStatus === 'suspended' ? 'bg-amber-500' : 'bg-red-600')} />
-               <CardHeader className="flex flex-row items-start gap-4 pb-4">
-                 <Avatar className="w-16 h-16 rounded-2xl shadow-md">
-                   <AvatarImage src={u.photo} />
-                   <AvatarFallback className="bg-primary/10 text-primary">
-                     {u.role === 'clinic' ? <Building2 /> : u.role === 'doctor' ? <Stethoscope /> : <Briefcase />}
+            <Card key={u.id} className="border-none shadow-xl shadow-slate-200/50 dark:shadow-none hover:shadow-2xl transition-all group overflow-hidden bg-white/80 dark:bg-slate-950/80 backdrop-blur-md rounded-[2.5rem] flex flex-col">
+               <div className={cn("h-3 w-full", u.subscriptionStatus === 'active' ? 'bg-emerald-500' : u.subscriptionStatus === 'suspended' ? 'bg-amber-500' : 'bg-red-600')} />
+               <CardHeader className="flex flex-row items-start gap-5 p-8 pb-4">
+                 <Avatar className="w-20 h-20 rounded-3xl shadow-xl ring-4 ring-white dark:ring-slate-900">
+                   <AvatarImage src={u.photo} className="object-cover" />
+                   <AvatarFallback className="bg-primary/5 text-primary">
+                     {u.role === 'clinic' ? <Building2 className="w-10 h-10" /> : u.role === 'doctor' ? <Stethoscope className="w-10 h-10" /> : <Briefcase className="w-10 h-10" />}
                    </AvatarFallback>
                  </Avatar>
                  <div className="flex-1 min-w-0">
-                   <div className="flex justify-between items-start">
-                    <CardTitle className="text-lg truncate font-bold text-slate-800">{u.fullName || u.username}</CardTitle>
-                   </div>
-                   <CardDescription className="flex items-center gap-1 mt-1 font-bold text-primary/70 uppercase text-[10px] tracking-widest">
+                   <CardTitle className="text-xl truncate font-black text-slate-800 dark:text-white leading-tight">{u.fullName || u.username}</CardTitle>
+                   <CardDescription className="flex items-center gap-2 mt-2 font-black text-primary uppercase text-[10px] tracking-widest bg-primary/5 w-fit px-3 py-1 rounded-full">
                      <Shield className="w-3 h-3" /> {
-                       u.role === 'clinic' ? 'Establecimiento' : 
+                       u.role === 'clinic' ? 'Consultorio' : 
                        u.role === 'doctor' ? 'Odontólogo' : 
                        u.role === 'assistant' ? 'Asistente' : 'Técnico'
                      }
                    </CardDescription>
                    {isAdmin && u.registeredByAdminId && (
-                     <p className="text-[9px] font-bold text-muted-foreground mt-1 flex items-center gap-1">
-                       <Shield className="w-2 h-2" /> Por: {u.registeredByAdminId}
+                     <p className="text-[9px] font-black text-muted-foreground mt-2 flex items-center gap-1 uppercase tracking-tighter">
+                       <ShieldCheck className="w-2.5 h-2.5" /> Registrado por: {u.registeredByAdminId}
                      </p>
                    )}
                  </div>
                </CardHeader>
-               <CardContent className="space-y-4">
+               <CardContent className="space-y-6 p-8 flex-1">
                  {isAdmin && (
-                   <div className="bg-slate-50 p-4 rounded-2xl text-[10px] space-y-3 border border-slate-100">
+                   <div className="bg-slate-50 dark:bg-slate-900 p-6 rounded-[1.5rem] text-[11px] space-y-4 shadow-inner border border-slate-100 dark:border-slate-800">
                       <div className="flex justify-between items-center">
-                        <span className="font-bold text-muted-foreground uppercase">Estado:</span> 
-                        <Badge variant={u.subscriptionStatus === 'active' ? 'default' : u.subscriptionStatus === 'suspended' ? 'secondary' : 'destructive'} className="text-[9px] h-5 font-black">
+                        <span className="font-black text-muted-foreground uppercase tracking-widest">Estado Acceso:</span> 
+                        <Badge variant={u.subscriptionStatus === 'active' ? 'default' : u.subscriptionStatus === 'suspended' ? 'secondary' : 'destructive'} className="text-[10px] h-6 font-black px-3 rounded-full">
                           {u.subscriptionStatus === 'active' ? 'ACTIVA' : u.subscriptionStatus === 'suspended' ? 'SUSPENDIDA' : 'BLOQUEADA'}
                         </Badge>
                       </div>
-                      <p className="flex justify-between">
-                        <span className="font-bold text-muted-foreground uppercase">Costo Mensual:</span> 
-                        <b className="text-primary font-bold text-sm">S/. {u.subscriptionFee?.toFixed(2)}</b>
+                      <p className="flex justify-between items-center">
+                        <span className="font-black text-muted-foreground uppercase tracking-widest">Mensualidad:</span> 
+                        <b className="text-primary font-black text-lg">S/. {u.subscriptionFee?.toFixed(2)}</b>
                       </p>
-                      <p className="flex justify-between">
-                        <span className="font-bold text-muted-foreground uppercase">Vencimiento:</span> 
-                        <b className="text-red-600 font-bold">{safeFormatDate(u.nextPaymentDate)}</b>
+                      <p className="flex justify-between items-center border-t border-dashed pt-3 mt-3">
+                        <span className="font-black text-muted-foreground uppercase tracking-widest">Próximo Pago:</span> 
+                        <b className="text-red-600 font-black text-xs bg-red-50 dark:bg-red-950/30 px-3 py-1 rounded-full">{safeFormatDate(u.nextPaymentDate)}</b>
                       </p>
                    </div>
                  )}
-                 <div className="text-xs space-y-2 text-muted-foreground">
-                    <p className="flex items-center gap-2 truncate font-medium"><MapPin className="w-3 h-3 text-primary" /> {u.address || 'Sin dirección registrada'}</p>
-                    {u.colegiatura && <p className="flex items-center gap-2 font-medium"><Stethoscope className="w-3 h-3 text-primary" /> {u.colegiatura}</p>}
+                 <div className="text-sm space-y-3 text-muted-foreground">
+                    <p className="flex items-center gap-3 font-bold"><MapPin className="w-4 h-4 text-primary" /> <span className="truncate">{u.address || 'Ubicación no registrada'}</span></p>
+                    {u.colegiatura && <p className="flex items-center gap-3 font-bold"><Stethoscope className="w-4 h-4 text-primary" /> <span>Reg: {u.colegiatura}</span></p>}
                  </div>
-                 <div className="flex gap-2 pt-2">
-                   <Button variant="outline" size="sm" className="gap-2 flex-1 h-10 rounded-xl hover:bg-primary/5 hover:text-primary transition-all" onClick={() => openEdit(u)}>
-                     <Edit2 className="w-4 h-4" /> Editar
+                 <div className="flex gap-3 pt-4">
+                   <Button variant="outline" size="sm" className="gap-2 flex-1 h-12 rounded-2xl font-black hover:bg-primary/5 hover:text-primary border-2 shadow-sm transition-all" onClick={() => openEdit(u)}>
+                     <Edit2 className="w-4 h-4" /> EDITAR
                    </Button>
-                   <Button variant="ghost" size="sm" onClick={() => handleDelete(u.id)} className="h-10 w-10 text-destructive hover:bg-red-50 rounded-xl transition-all">
-                     <Trash2 className="w-4 h-4" />
+                   <Button variant="ghost" size="icon" onClick={() => handleDelete(u.id)} className="h-12 w-12 text-destructive hover:bg-red-50 dark:hover:bg-red-950/30 rounded-2xl transition-all shadow-sm">
+                     <Trash2 className="w-5 h-5" />
                    </Button>
                  </div>
                </CardContent>
             </Card>
           ))}
           {users.length === 0 && (
-            <div className="col-span-full py-24 text-center opacity-30 flex flex-col items-center gap-6 border-2 border-dashed rounded-3xl">
-              <Building2 className="w-20 h-20" />
-              <div className="space-y-1">
-                <p className="font-bold text-xl">Sin registros</p>
-                <p className="text-sm">Empiece registrando el primer consultorio de la red.</p>
+            <div className="col-span-full py-32 text-center opacity-30 flex flex-col items-center gap-8 border-4 border-dashed rounded-[3rem] bg-slate-50/50">
+              <Building2 className="w-24 h-24 text-slate-400" />
+              <div className="space-y-2">
+                <p className="font-black text-2xl uppercase tracking-widest">Sin consultorios registrados</p>
+                <p className="text-sm font-medium">Inicie la expansión de la red añadiendo el primer establecimiento.</p>
               </div>
             </div>
           )}
