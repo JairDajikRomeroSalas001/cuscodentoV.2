@@ -16,13 +16,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Credenciales Maestras solicitadas
 const MASTER_ADMINS = [
-  { username: 'admin1', password: 'admin1', fullName: 'Administrador 1' },
-  { username: 'admin2', password: 'admin2', fullName: 'Administrador 2' }
+  { username: 'admin1', password: 'admin1', fullName: 'Administrador Principal' },
+  { username: 'admin2', password: 'admin2', fullName: 'Administrador de Soporte' }
 ];
 
 const MAX_ATTEMPTS = 3;
-const LOCKOUT_MS = 2 * 60 * 1000; 
+const LOCKOUT_MS = 2 * 60 * 1000; // 2 minutos de bloqueo
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -59,14 +60,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (username: string, password: string) => {
     const now = Date.now();
+    
+    // Verificar si el sistema está bloqueado temporalmente
     if (now < lockoutUntil) {
       const remaining = Math.ceil((lockoutUntil - now) / 1000);
       return { 
         success: false, 
-        message: `Sistema bloqueado por seguridad. Intente en ${remaining} segundos.` 
+        message: `Sistema bloqueado. Reintente en ${remaining} segundos.` 
       };
     }
 
+    // 1. Verificar si es un Administrador Maestro (Credenciales fijas)
     const masterMatch = MASTER_ADMINS.find(ma => ma.username === username && ma.password === password);
     let authenticatedUser: User | null = null;
 
@@ -81,19 +85,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         lastLogin: new Date().toISOString(),
         subscriptionStatus: 'active'
       };
+      // Persistir el admin en la base de datos local para reportes
       await db.put('users', authenticatedUser);
     } 
     else {
+      // 2. Buscar en la base de datos de consultorios y personal
       const allUsers = await db.getAll<User>('users');
       const foundUser = allUsers.find(u => u.username === username && u.password === password);
       
       if (foundUser) {
+        // Protección: Solo los masters pueden loguearse como admin si no están en la lista fija
         if (foundUser.role === 'admin' && !MASTER_ADMINS.some(m => m.username === username)) {
-          return { success: false, message: 'Acceso Denegado: Credenciales administrativas no autorizadas.' };
+          return { success: false, message: 'Acceso Denegado: Credenciales no autorizadas.' };
         }
 
         if (foundUser.subscriptionStatus === 'blocked') {
-          return { success: false, message: 'Cuenta Bloqueada. Comuníquese con el administrador.' };
+          return { success: false, message: 'Cuenta Bloqueada. Contacte a soporte.' };
         }
         
         authenticatedUser = { 
@@ -107,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (authenticatedUser) {
+      // Éxito en el login
       setUser(authenticatedUser);
       localStorage.setItem('kd_session', JSON.stringify(authenticatedUser));
       localStorage.removeItem('kd_failed_attempts');
@@ -115,6 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { success: true };
     }
     
+    // Gestión de intentos fallidos y bloqueo
     const attempts = parseInt(localStorage.getItem('kd_failed_attempts') || '0') + 1;
     localStorage.setItem('kd_failed_attempts', attempts.toString());
 
@@ -124,7 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLockoutUntil(lockUntil);
       return { 
         success: false, 
-        message: 'Demasiados intentos fallidos. Sistema bloqueado por 2 minutos.' 
+        message: 'Demasiados intentos fallidos. Bloqueo de seguridad activado por 2 min.' 
       };
     }
 
