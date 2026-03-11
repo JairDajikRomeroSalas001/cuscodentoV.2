@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Users, UserSquare2, Stethoscope, Landmark, Activity, Calendar, Database as DatabaseIcon, ShieldCheck, Clock, AlertCircle, Boxes, Sparkles, TrendingUp, ArrowUpRight, Zap } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { db, User, Patient, Appointment } from '@/lib/db';
