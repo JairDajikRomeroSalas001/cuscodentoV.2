@@ -25,6 +25,46 @@
     --input: 180 20% 88%;
     --ring: 180 100% 25%;
     --radius: 0.75rem;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 180 60% 5%;
+    --sidebar-primary: 180 100% 25%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 180 20% 94%;
+    --sidebar-accent-foreground: 180 100% 25%;
+    --sidebar-border: 180 20% 88%;
+    --sidebar-ring: 180 100% 25%;
+  }
+
+  .dark {
+    --background: 180 40% 4%;
+    --foreground: 180 20% 98%;
+    --card: 180 40% 6%;
+    --card-foreground: 180 20% 98%;
+    --popover: 180 40% 6%;
+    --popover-foreground: 180 20% 98%;
+    --primary: 180 100% 30%;
+    --primary-foreground: 180 20% 98%;
+    --secondary: 180 30% 12%;
+    --secondary-foreground: 180 20% 98%;
+    --muted: 180 30% 12%;
+    --muted-foreground: 180 10% 65%;
+    --accent: 196 40% 35%;
+    --accent-foreground: 180 20% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 180 20% 98%;
+    --border: 180 30% 15%;
+    --input: 180 30% 15%;
+    --ring: 180 100% 30%;
+
+    --sidebar-background: 180 40% 6%;
+    --sidebar-foreground: 180 20% 98%;
+    --sidebar-primary: 180 100% 30%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 180 30% 12%;
+    --sidebar-accent-foreground: 180 20% 98%;
+    --sidebar-border: 180 30% 15%;
+    --sidebar-ring: 180 100% 30%;
   }
 }
 
@@ -33,7 +73,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground font-body;
+    @apply bg-background text-foreground font-body transition-colors duration-300;
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-headline;

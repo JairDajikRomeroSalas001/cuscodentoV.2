@@ -9,12 +9,12 @@ interface AuthContextType {
   user: User | null;
   login: (username: string, password: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
+  updateUser: (updatedUser: User) => void;
   isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// ÚNICAS CUENTAS ADMINISTRATIVAS PERMITIDAS EN TODO EL SISTEMA
 const MASTER_ADMINS = [
   { username: 'admin1', password: 'admin1', fullName: 'Administrador 1' },
   { username: 'admin2', password: 'admin2', fullName: 'Administrador 2' }
@@ -30,7 +30,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (session) {
       try {
         const parsed = JSON.parse(session);
-        // Normalización estricta: si el rol guardado no es uno de los permitidos, forzar cierre
         if (parsed.role === 'superadmin') {
           parsed.role = 'admin';
         }
@@ -43,12 +42,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (username: string, password: string) => {
-    // 1. Bloqueo explícito de cualquier intento con el usuario 'superadmin'
     if (username.toLowerCase() === 'superadmin') {
       return { success: false, message: 'Acceso Denegado: Usuario no autorizado.' };
     }
 
-    // 2. Verificar si es una de las dos cuentas maestras (admin1 o admin2)
     const masterMatch = MASTER_ADMINS.find(ma => ma.username === username && ma.password === password);
     
     let authenticatedUser: User | null = null;
@@ -64,16 +61,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         lastLogin: new Date().toISOString(),
         subscriptionStatus: 'active'
       };
-      // Sincronizar con BD para asegurar persistencia de datos
       await db.put('users', authenticatedUser);
     } 
-    // 3. Verificar en la base de datos local (Consultorios y Personal)
     else {
       const allUsers = await db.getAll<User>('users');
       const foundUser = allUsers.find(u => u.username === username && u.password === password);
       
       if (foundUser) {
-        // SEGURIDAD: Impedir que un usuario de la BD acceda si tiene rol 'admin' pero no es master
         if (foundUser.role === 'admin' || (foundUser.role as any) === 'superadmin') {
           return { success: false, message: 'Acceso Denegado: Credenciales administrativas no autorizadas.' };
         }
@@ -111,8 +105,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push('/login');
   };
 
+  const updateUser = (updatedUser: User) => {
+    setUser(updatedUser);
+    localStorage.setItem('kd_session', JSON.stringify(updatedUser));
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, login, logout, updateUser, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

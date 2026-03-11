@@ -2,7 +2,7 @@
 "use client";
 
 const DB_NAME = "KuskoDentoDB";
-const DB_VERSION = 9;
+const DB_VERSION = 10;
 
 export type UserRole = 'admin' | 'clinic' | 'doctor' | 'assistant' | 'technician';
 
@@ -25,7 +25,8 @@ export interface User {
   paymentFrequency?: 'monthly' | 'yearly';
   subscriptionStatus: 'active' | 'suspended' | 'blocked';
   registeredByAdminId?: string;
-  primaryColor?: string; // Campo para personalización de color
+  primaryColor?: string;
+  theme?: 'light' | 'dark' | 'system';
 }
 
 export interface Patient {
