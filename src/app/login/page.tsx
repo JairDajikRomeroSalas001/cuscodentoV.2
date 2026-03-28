@@ -12,7 +12,7 @@ import { AlertCircle, Lock } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 function LoginContent() {
-  const [username, setUsername] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [remainingSeconds, setRemainingSeconds] = useState(0);
@@ -40,7 +40,7 @@ function LoginContent() {
     if (remainingSeconds > 0) return;
     
     setError('');
-    const result = await login(username, password);
+    const result = await login(identifier, password);
     if (result.success) {
       router.push('/dashboard');
     } else {
@@ -84,13 +84,13 @@ function LoginContent() {
             )}
 
             <div className="space-y-3">
-              <Label htmlFor="username" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Usuario</Label>
+              <Label htmlFor="identifier" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">ID de Usuario</Label>
               <Input 
-                id="username" 
+                id="identifier" 
                 type="text" 
                 placeholder="Ingresa tu ID de usuario" 
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 required
                 disabled={isLocked}
                 className="h-14 rounded-2xl bg-slate-50 border-none shadow-inner text-lg focus:bg-white transition-all"

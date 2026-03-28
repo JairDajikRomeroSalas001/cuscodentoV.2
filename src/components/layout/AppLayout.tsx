@@ -9,10 +9,17 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { format, isAfter, parseISO, addDays } from 'date-fns';
-import { db, PaymentMethod } from '@/lib/db';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+
+type PaymentMethod = {
+  id: string;
+  type: 'qr' | 'bank';
+  label: string;
+  value: string;
+  qrImage?: string;
+};
 
 function hexToHsl(hex: string) {
   let r = 0, g = 0, b = 0;
@@ -62,7 +69,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   })() : 'active';
 
   const isAdmin = user?.role === 'admin';
-  const isClinic = user?.role === 'clinic';
+  const isClinic = ['clinic', 'clinic_owner', 'clinic_admin'].includes(user?.role || '');
   const isSuspended = currentStatus === 'suspended';
   const isBlocked = currentStatus === 'blocked';
   const isOverdue = currentStatus === 'overdue';
@@ -83,10 +90,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }, [pathname, user, isAdmin, router]);
 
   useEffect(() => {
-    if (user && (user.role === 'clinic' || user.role === 'doctor')) {
-      db.getAll<PaymentMethod>('payment_methods').then(setPaymentMethods);
-    }
-  }, [user]);
+    setPaymentMethods([]);
+  }, [user?.id]);
 
   useEffect(() => {
     if (isOverdue && !isAdmin && user) {
@@ -111,31 +116,40 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }, [isMoraReminderOpen, moraCountdown]);
 
   useEffect(() => {
-    if (user?.primaryColor) {
-      const hslValue = hexToHsl(user.primaryColor);
-      const styleId = 'dynamic-brand-color';
-      let styleElement = document.getElementById(styleId);
-      if (!styleElement) {
-        styleElement = document.createElement('style');
-        styleElement.id = styleId;
-        document.head.appendChild(styleElement);
-      }
-      styleElement.innerHTML = `
-        :root, .dark {
-          --primary: ${hslValue} !important;
-          --ring: ${hslValue} !important;
-          --sidebar-primary: ${hslValue} !important;
-          --sidebar-accent-foreground: ${hslValue} !important;
-        }
-        [data-sidebar="menu-button"][data-active="true"] {
-          background-color: hsla(${hslValue}, 0.1) !important;
-          border-left: 3px solid hsl(${hslValue}) !important;
-          border-radius: 0 0.5rem 0.5rem 0 !important;
-          color: hsl(${hslValue}) !important;
-        }
-      `;
+    const styleId = 'dynamic-brand-color';
+    const existing = document.getElementById(styleId);
+
+    if (!user?.primaryColor) {
+      existing?.remove();
+      return;
     }
-  }, [user?.primaryColor]);
+
+    const hslValue = hexToHsl(user.primaryColor);
+    const styleElement = existing ?? document.createElement('style');
+    styleElement.id = styleId;
+    styleElement.innerHTML = `
+      :root, .dark {
+        --primary: ${hslValue} !important;
+        --ring: ${hslValue} !important;
+        --sidebar-primary: ${hslValue} !important;
+        --sidebar-accent-foreground: ${hslValue} !important;
+      }
+      [data-sidebar="menu-button"][data-active="true"] {
+        background-color: hsla(${hslValue}, 0.1) !important;
+        border-left: 3px solid hsl(${hslValue}) !important;
+        border-radius: 0 0.5rem 0.5rem 0 !important;
+        color: hsl(${hslValue}) !important;
+      }
+    `;
+
+    if (!existing) {
+      document.head.appendChild(styleElement);
+    }
+
+    return () => {
+      document.getElementById(styleId)?.remove();
+    };
+  }, [user?.primaryColor, user?.id, user?.clinicId, user?.clinic_id]);
 
   useEffect(() => {
     const applyTheme = (theme: string) => {
@@ -158,9 +172,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   const toggleTheme = () => {
-    const newTheme = user.theme === 'dark' ? 'light' : 'dark';
-    const updatedUser = { ...user, theme: newTheme };
-    db.put('users', updatedUser);
+    const newTheme: 'light' | 'dark' = user.theme === 'dark' ? 'light' : 'dark';
+    const updatedUser: typeof user = { ...user, theme: newTheme };
     updateUser(updatedUser);
   };
 
@@ -311,7 +324,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-1">{isAdmin ? 'Master Admin' : user.role}</p>
                 </div>
                 <div className="w-12 h-12 rounded-2xl bg-primary flex items-center justify-center text-white text-lg font-black shadow-lg group-hover:scale-110 transition-transform">
-                  {(user.fullName || user.username).charAt(0).toUpperCase()}
+                  {(user.fullName || user.username || 'U').charAt(0).toUpperCase()}
                 </div>
               </div>
             </div>

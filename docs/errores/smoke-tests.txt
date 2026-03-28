@@ -1,0 +1,26 @@
+﻿
+> nextn@0.1.0 test:smoke
+> tsx scripts/smoke-tests.ts
+
+
+🧪 SMOKE TESTS: Validando endpoints críticos
+
+❌ GET /api/health: Unexpected token 'I', "Internal S"... is not valid JSON
+❌ POST /api/auth/login (valid): Unexpected token 'I', "Internal S"... is not valid JSON
+❌ POST /api/auth/login (invalid): Unexpected token 'I', "Internal S"... is not valid JSON
+❌ GET /api/auth/me (no auth): Unexpected token 'I', "Internal S"... is not valid JSON
+❌ GET /api/patients (no auth): Unexpected token 'I', "Internal S"... is not valid JSON
+❌ GET /api/patients (valid): Unexpected token 'I', "Internal S"... is not valid JSON
+❌ POST /api/patients (create): Unexpected token 'I', "Internal S"... is not valid JSON
+❌ GET /api/treatments: Unexpected token 'I', "Internal S"... is not valid JSON
+❌ GET /api/payments: Unexpected token 'I', "Internal S"... is not valid JSON
+❌ POST /api/auth/logout: Unexpected token 'I', "Internal S"... is not valid JSON
+❌ POST /api/auth/logout verification: Unexpected token 'I', "Internal S"... is not valid JSON
+
+============================================================
+
+📊 RESULTADOS:
+   ✅ Pasadas: 0
+   ❌ Fallidas: 11
+
+❌ SMOKE TESTS FALLARON

@@ -1,10 +1,12 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { db, User, SubscriptionPayment } from '@/lib/db';
+import { useApi } from '@/hooks/use-api';
+import { useMutation } from '@/hooks/use-mutation';
+import type { AdminUser, SubscriptionPayment } from '@/types/admin';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -22,18 +24,46 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 function BillingContent() {
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
-  const [clinics, setClinics] = useState<User[]>([]);
-  const [history, setHistory] = useState<SubscriptionPayment[]>([]);
   const [search, setSearch] = useState('');
   const [isPayOpen, setIsPayOpen] = useState(false);
-  const [selectedClinic, setSelectedClinic] = useState<User | null>(null);
+  const [selectedClinic, setSelectedClinic] = useState<AdminUser | null>(null);
   const [payAmount, setPayAmount] = useState('0');
   const [nextDate, setNextDate] = useState('');
   const [installments, setInstallments] = useState('1');
 
-  useEffect(() => {
-    load();
-  }, []);
+  const {
+    data: usersData,
+    loading: usersLoading,
+    error: usersError,
+    refetch: refetchUsers,
+  } = useApi<{ items: AdminUser[] }>('/api/admin/users');
+
+  const {
+    data: historyData,
+    loading: historyLoading,
+    error: historyError,
+    refetch: refetchHistory,
+  } = useApi<{ items: SubscriptionPayment[] }>('/api/admin/subscription-payments');
+
+  const updateStatusMutation = useMutation<AdminUser, { id: string; subscriptionStatus: 'active' | 'suspended' | 'blocked' }>(
+    '/api/admin/users',
+    'PUT'
+  );
+
+  const registerPaymentMutation = useMutation<
+    SubscriptionPayment,
+    { clinicId: string; amount: number; installments: number; nextPaymentDate: string; concept: string }
+  >('/api/admin/subscription-payments', 'POST');
+
+  const clinics = useMemo(() => {
+    const all = usersData?.items ?? [];
+    return all.filter((u) => u.role === 'clinic');
+  }, [usersData]);
+
+  const history = useMemo(() => {
+    const all = historyData?.items ?? [];
+    return [...all].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [historyData]);
 
   useEffect(() => {
     if (selectedClinic && installments) {
@@ -45,13 +75,6 @@ function BillingContent() {
       setPayAmount(((selectedClinic.subscriptionFee || 0) * num).toString());
     }
   }, [selectedClinic, installments]);
-
-  const load = async () => {
-    const allUsers = await db.getAll<User>('users');
-    const allHistory = await db.getAll<SubscriptionPayment>('subscription_payments');
-    setClinics(allUsers.filter(u => u.role === 'clinic'));
-    setHistory(allHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-  };
 
   const safeFormatDate = (dateStr?: string) => {
     if (!dateStr) return '---';
@@ -68,24 +91,23 @@ function BillingContent() {
     e.preventDefault();
     if (!selectedClinic || !currentUser) return;
 
-    const payment: SubscriptionPayment = {
-      id: crypto.randomUUID(),
+    const totalAmount = parseFloat(payAmount);
+    const payment = await registerPaymentMutation.mutate({
       clinicId: selectedClinic.id,
-      clinicName: selectedClinic.fullName || selectedClinic.username || 'Clínica',
-      amount: parseFloat(payAmount),
-      date: new Date().toISOString().split('T')[0],
-      concept: `Renovación: ${installments} cuota(s) mensuales. Próximo vencimiento: ${safeFormatDate(nextDate)}`,
-      processedByAdminId: currentUser.username
-    };
-
-    await db.put('subscription_payments', payment);
-    
-    const updatedClinic: User = {
-      ...selectedClinic,
+      amount: Number.isFinite(totalAmount) ? totalAmount : 0,
+      installments: parseInt(installments) || 1,
       nextPaymentDate: nextDate,
-      subscriptionStatus: 'active'
-    };
-    await db.put('users', updatedClinic);
+      concept: `Renovación: ${installments} cuota(s) mensuales. Próximo vencimiento: ${safeFormatDate(nextDate)}`,
+    });
+
+    if (!payment) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo registrar el pago',
+        description: registerPaymentMutation.error || 'Intente nuevamente',
+      });
+      return;
+    }
 
     setIsPayOpen(false);
     toast({ 
@@ -93,19 +115,25 @@ function BillingContent() {
       description: `Acceso extendido hasta el ${safeFormatDate(nextDate)}` 
     });
     setInstallments('1');
-    load();
+    await Promise.all([refetchUsers(), refetchHistory()]);
   };
 
   const handleStatusChange = async (clinicId: string, newStatus: 'active' | 'suspended' | 'blocked') => {
-    const clinic = clinics.find(c => c.id === clinicId);
-    if (!clinic) return;
-    const updated: User = { ...clinic, subscriptionStatus: newStatus };
-    await db.put('users', updated);
+    const updated = await updateStatusMutation.mutate({ id: clinicId, subscriptionStatus: newStatus });
+    if (!updated) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo actualizar el estado',
+        description: updateStatusMutation.error || 'Intente nuevamente',
+      });
+      return;
+    }
+
     toast({ title: "Estado actualizado", description: `El consultorio ahora está ${newStatus === 'active' ? 'Activo' : newStatus === 'suspended' ? 'Suspendido' : 'Bloqueado'}` });
-    load();
+    await refetchUsers();
   };
 
-  const getCalculatedStatus = (clinic: User) => {
+  const getCalculatedStatus = (clinic: AdminUser) => {
     if (clinic.subscriptionStatus === 'blocked') return 'blocked';
     if (!clinic.nextPaymentDate) return 'active';
     try {
@@ -126,6 +154,22 @@ function BillingContent() {
   );
 
   if (currentUser?.role !== 'admin') return null;
+
+  if (usersLoading || historyLoading) {
+    return (
+      <AppLayout>
+        <div className="py-20 text-center text-sm font-semibold text-muted-foreground">Cargando panel de cobros...</div>
+      </AppLayout>
+    );
+  }
+
+  if (usersError || historyError) {
+    return (
+      <AppLayout>
+        <div className="py-20 text-center text-sm font-semibold text-destructive">{usersError || historyError}</div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>

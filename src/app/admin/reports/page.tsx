@@ -1,65 +1,35 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { db, User, Patient, Appointment, Payment } from '@/lib/db';
+import { useApi } from '@/hooks/use-api';
+import type { AdminReportsPayload } from '@/types/admin';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, PieChart, Pie, Cell } from 'recharts';
 import { Users, Building2, Calendar, CreditCard, TrendingUp } from 'lucide-react';
 
 function ReportsContent() {
   const { user } = useAuth();
-  const [data, setData] = useState({
-    clinicsData: [] as any[],
-    growthData: [] as any[],
-    stats: {
-      totalClinics: 0,
-      totalPatients: 0,
-      totalAppointments: 0,
-      totalRevenue: 0
-    }
-  });
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    const users = await db.getAll<User>('users');
-    const clinics = users.filter(u => u.role === 'clinic');
-    const patients = await db.getAll<Patient>('patients');
-    const appointments = await db.getAll<Appointment>('appointments');
-    const payments = await db.getAll<Payment>('payments');
-
-    const growth = [
-      { name: 'Ene', value: 10 },
-      { name: 'Feb', value: 25 },
-      { name: 'Mar', value: 45 },
-      { name: 'Abr', value: 30 },
-      { name: 'May', value: 60 },
-      { name: 'Jun', value: clinics.length * 10 }
-    ];
-
-    const distribution = clinics.map(c => ({
-      name: c.fullName || c.username,
-      patients: patients.filter(p => p.clinicId === c.id).length
-    })).sort((a, b) => b.patients - a.patients).slice(0, 5);
-
-    setData({
-      clinicsData: distribution,
-      growthData: growth,
-      stats: {
-        totalClinics: clinics.length,
-        totalPatients: patients.length,
-        totalAppointments: appointments.length,
-        totalRevenue: payments.reduce((acc, curr) => acc + curr.totalPaid, 0)
-      }
-    });
-  };
+  const { data, loading, error } = useApi<AdminReportsPayload>('/api/admin/reports');
 
   if (user?.role !== 'admin') return null;
+
+  if (loading) {
+    return (
+      <AppLayout>
+        <div className="py-20 text-center text-sm font-semibold text-muted-foreground">Cargando reportes...</div>
+      </AppLayout>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <AppLayout>
+        <div className="py-20 text-center text-sm font-semibold text-destructive">{error || 'No se pudo cargar la data de reportes'}</div>
+      </AppLayout>
+    );
+  }
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 

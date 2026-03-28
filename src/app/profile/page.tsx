@@ -4,12 +4,13 @@
 import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { db, User, PaymentMethod } from '@/lib/db';
+import { db, PaymentMethod } from '@/lib/db';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { useMutation } from '@/hooks/use-mutation';
 import { Lock, ShieldCheck, User as UserIcon, QrCode, Building2, Plus, Trash2, Camera, Wallet, Palette, Sun, Moon, Laptop, Sparkles, Type } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -17,6 +18,28 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+
+type BrandingResponse = {
+  clinic: {
+    id: string;
+    name: string;
+    domain: string;
+    logo_url: string | null;
+    primary_color: string | null;
+    slogan: string | null;
+    theme: string;
+    subscription_status: 'active' | 'suspended' | 'blocked';
+    next_payment_date: string | null;
+  };
+};
+
+type BrandingPayload = {
+  brandName?: string;
+  primaryColor?: string;
+  slogan?: string;
+  logoUrl?: string;
+  theme?: 'light' | 'dark' | 'system';
+};
 
 function ProfileContent() {
   const { user, logout, updateUser } = useAuth();
@@ -26,6 +49,10 @@ function ProfileContent() {
   const [isSavingAppearance, setIsSavingAppearance] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [isMethodOpen, setIsMethodOpen] = useState(false);
+  const { mutate: saveBranding } = useMutation<BrandingResponse, BrandingPayload>(
+    '/api/clinics/me/branding',
+    'PUT'
+  );
   
   // States for branding
   const [primaryColor, setPrimaryColor] = useState(user?.primaryColor || '#008080');
@@ -40,6 +67,15 @@ function ProfileContent() {
     if (user?.role === 'admin') loadMethods();
   }, [user]);
 
+  useEffect(() => {
+    if (!user) return;
+    setPrimaryColor(user.primaryColor || '#008080');
+    setPhotoPreview(user.photo || null);
+    setSelectedTheme(user.theme || 'light');
+    setBrandName(user.brandName || '');
+    setSlogan(user.slogan || '');
+  }, [user?.id, user?.primaryColor, user?.photo, user?.theme, user?.brandName, user?.slogan]);
+
   const loadMethods = async () => {
     const all = await db.getAll<PaymentMethod>('payment_methods');
     setPaymentMethods(all);
@@ -48,7 +84,7 @@ function ProfileContent() {
   if (!user) return null;
 
   const isAdmin = user.role === 'admin';
-  const isClinic = user.role === 'clinic';
+  const isClinic = ['clinic', 'clinic_owner', 'clinic_admin'].includes(user.role);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,15 +92,9 @@ function ProfileContent() {
       toast({ variant: 'destructive', title: 'Error', description: 'Las contraseñas nuevas no coinciden.' });
       return;
     }
-    if (passwords.current !== user.password) {
-      toast({ variant: 'destructive', title: 'Error', description: 'La contraseña actual es incorrecta.' });
-      return;
-    }
     setIsChanging(true);
     try {
-      const updatedUser: User = { ...user, password: passwords.new };
-      await db.put('users', updatedUser);
-      toast({ title: 'Éxito', description: 'Contraseña actualizada. Su sesión se cerrará en breve.' });
+      toast({ title: 'Pendiente de API', description: 'El cambio de contraseña se habilitará con el endpoint de perfil.' });
       setTimeout(() => logout(), 2000);
     } catch (error) {
       toast({ variant: 'destructive', title: 'Error', description: 'No se pudo actualizar la contraseña.' });
@@ -77,17 +107,43 @@ function ProfileContent() {
     if (!user) return;
     setIsSavingAppearance(true);
     try {
-      const updatedUser: User = { 
-        ...user, 
-        primaryColor, 
-        photo: photoPreview || undefined,
+      let updatedUser = {
+        ...user,
         theme: selectedTheme,
-        brandName: brandName || undefined,
-        slogan: slogan || undefined
       };
-      await db.put('users', updatedUser);
+
+      if (isClinic) {
+        const response = await saveBranding({
+          brandName: brandName || undefined,
+          primaryColor,
+          slogan: slogan || undefined,
+          logoUrl: photoPreview || undefined,
+          theme: selectedTheme,
+        });
+
+        if (!response?.clinic) {
+          throw new Error('No se pudo guardar la personalizacion de la clinica');
+        }
+
+        const clinicTheme =
+          response.clinic.theme === 'light' || response.clinic.theme === 'dark' || response.clinic.theme === 'system'
+            ? response.clinic.theme
+            : selectedTheme;
+
+        updatedUser = {
+          ...updatedUser,
+          theme: clinicTheme,
+          primaryColor: response.clinic.primary_color ?? undefined,
+          photo: response.clinic.logo_url ?? undefined,
+          brandName: response.clinic.name,
+          slogan: response.clinic.slogan ?? undefined,
+          subscriptionStatus: response.clinic.subscription_status ?? user.subscriptionStatus,
+          nextPaymentDate: response.clinic.next_payment_date ?? undefined,
+        };
+      }
+
       updateUser(updatedUser);
-      toast({ title: "Identidad Visual Actualizada", description: "Los cambios se han aplicado a todo el sistema." });
+      toast({ title: 'Identidad Visual Actualizada', description: 'Los cambios se han aplicado para tu clinica.' });
     } catch (e) {
       toast({ variant: 'destructive', title: "Error", description: "No se pudieron guardar los cambios." });
     } finally {

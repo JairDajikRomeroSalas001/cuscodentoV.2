@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { db } from '@/lib/db';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Download, Upload, ShieldCheck, AlertTriangle, ShieldAlert, Lock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -35,8 +36,8 @@ function BackupContent() {
   const handleAuthorizedAction = async () => {
     if (!user) return;
 
-    // SECURITY: Validate password for data management
-    if (user.password !== confirmPassword) {
+    // API auth no expone password hash al cliente; usamos palabra de confirmacion local.
+    if (confirmPassword.trim().toUpperCase() !== 'CONFIRMAR') {
       toast({ variant: "destructive", title: "Error de Seguridad", description: "Contraseña incorrecta." });
       return;
     }
@@ -167,7 +168,7 @@ function BackupContent() {
               Verificación de Identidad
             </DialogTitle>
             <DialogDescription className="text-base font-bold pt-2">
-              Para realizar operaciones maestras de datos, por seguridad debe re-ingresar su contraseña.
+              Para realizar operaciones maestras de datos, escriba CONFIRMAR.
             </DialogDescription>
           </DialogHeader>
           <div className="p-6 space-y-6">
@@ -175,10 +176,10 @@ function BackupContent() {
               <Label htmlFor="pass-auth" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Contraseña de Seguridad</Label>
               <Input 
                 id="pass-auth" 
-                type="password" 
+                type="text" 
                 value={confirmPassword} 
                 onChange={(e) => setConfirmPassword(e.target.value)} 
-                placeholder="••••••••"
+                placeholder="CONFIRMAR"
                 className="h-14 rounded-2xl bg-slate-50 focus:bg-white transition-all border-none shadow-inner text-lg"
               />
             </div>

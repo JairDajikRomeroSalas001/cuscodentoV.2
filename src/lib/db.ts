@@ -1,34 +1,45 @@
+/**
+ * ❌ DEPRECATED: Este archivo es LEGACY y no debería usarse.
+ * 
+ * Las páginas en src/app/admin/ todavía lo importan pero DEBERÍAN:
+ * 1. Usar la API en src/app/api/ en lugar de acceder a IndexedDB
+ * 2. Usar los custom hooks: useApi() y useMutation() desde src/hooks/
+ * 3. Eliminar imports de este archivo
+ * 
+ * @deprecated
+ */
 
 "use client";
 
-const DB_NAME = "KuskoDentoDB";
-const DB_VERSION = 12; 
+// Tipos stub para compatibilidad con páginas admin legacy
+// TODO: Remigrar estas páginas para usar API REST
 
 export type UserRole = 'admin' | 'clinic' | 'doctor' | 'assistant' | 'technician';
 
 export interface User {
   id: string;
-  username?: string; 
-  password?: string; 
+  username?: string;
+  password?: string;
   role: UserRole;
   fullName?: string;
   dni?: string;
-  address?: string;
-  photo?: string;
-  colegiatura?: string;
-  clinicId?: string; 
-  lastLogin?: string;
+  clinicId?: string;
+  email?: string;
   status?: 'active' | 'inactive';
   subscriptionFee?: number;
+  subscriptionStatus: 'active' | 'suspended' | 'blocked';
   nextPaymentDate?: string;
   contractStartDate?: string;
   paymentFrequency?: 'monthly' | 'yearly';
-  subscriptionStatus: 'active' | 'suspended' | 'blocked';
   registeredByAdminId?: string;
   primaryColor?: string;
   brandName?: string;
   slogan?: string;
   theme?: 'light' | 'dark' | 'system';
+  lastLogin?: string;
+  address?: string;
+  colegiatura?: string;
+  photo?: string;
 }
 
 export interface Patient {
@@ -39,28 +50,14 @@ export interface Patient {
   email?: string;
   phone: string;
   address: string;
-  photo?: string;
-  age?: number;
-  registrationDate: string;
-  underTreatment: boolean;
-  proneToBleeding: boolean;
-  allergicToMeds: boolean;
-  allergiesDetail?: string;
-  hypertensive: boolean;
-  diabetic: boolean;
-  pregnant: boolean;
-  consultationReason: string;
-  diagnostic: string;
-  medicalObservations: string;
-  attendedBy: string;
   clinicId?: string;
-}
-
-export interface Treatment {
-  id: string;
-  name: string;
-  price: number;
-  clinicId?: string;
+  registrationDate?: string;
+  attendedBy?: string;
+  underTreatment?: boolean;
+  proneToBleeding?: boolean;
+  allergicToMeds?: boolean;
+  consultationReason?: string;
+  diagnostic?: string;
 }
 
 export interface Appointment {
@@ -71,19 +68,10 @@ export interface Appointment {
   doctorName: string;
   date: string;
   time: string;
-  observations: string;
   status: 'Asignado' | 'Atendido';
   cost: number;
-  applyDiscount: boolean;
-  paidAmount: number;
-  balance: number;
   clinicId?: string;
-}
-
-export interface PaymentHistory {
-  date: string;
-  time: string;
-  amount: number;
+  observations?: string;
 }
 
 export interface Payment {
@@ -91,200 +79,142 @@ export interface Payment {
   patientId: string;
   appointmentId: string;
   treatmentName: string;
-  amount: number;
-  totalCost: number;
   totalPaid: number;
   balance: number;
   date: string;
-  time: string;
-  observations: string;
-  history?: PaymentHistory[];
+  totalCost: number;
+  history?: Array<{
+    amount: number;
+    date: string;
+    method?: string;
+  }>;
+}
+
+export interface SubscriptionPayment {
+  id: string;
+  clinicId?: string;
+  clinicName?: string;
+  amount: number;
+  date: string;
+  status?: 'pending' | 'paid';
+  concept?: string;
+  processedByAdminId?: string;
+}
+
+export interface Consent {
+  id: string;
+  patientId: string;
+  type: string;
+  date: string;
+  fileBlob: Blob;
+  fileType: string;
+  fileName: string;
+}
+
+export interface Treatment {
+  id: string;
+  name: string;
+  price: number;
   clinicId?: string;
 }
 
 export interface Radiograph {
   id: string;
   patientId: string;
-  fileName: string;
-  fileType: string;
+  appointmentId?: string;
+  fileUrl: string;
+  type?: string;
+  clinicId?: string;
+  date: string;
   fileBlob: Blob;
-  date: string;
-}
-
-export interface Consent {
-  id: string;
-  patientId: string;
-  fileName: string;
   fileType: string;
-  fileBlob: Blob;
-  date: string;
-}
-
-export interface Odontogram {
-  id: string;
-  patientId: string;
-  data: any;
-  date: string;
-  diagnostic?: string;
-}
-
-export interface SubscriptionPayment {
-  id: string;
-  clinicId: string;
-  clinicName: string;
-  amount: number;
-  date: string;
-  concept: string;
-  processedByAdminId?: string;
-}
-
-export interface PaymentMethod {
-  id: string;
-  type: 'qr' | 'bank';
-  label: string;
-  value: string;
-  qrImage?: string;
+  fileName: string;
 }
 
 export interface InventoryItem {
   id: string;
   name: string;
-  category: string;
   quantity: number;
+  unit_cost?: number;
   minQuantity: number;
+  clinicId?: string;
+  category: string;
   unit: string;
   lastUpdated: string;
-  clinicId: string;
 }
 
-export class LocalDB {
-  private db: IDBDatabase | null = null;
+export interface Odontogram {
+  id: string;
+  patientId: string;
+  appointmentId?: string;
+  data_json?: unknown;
+  clinicId?: string;
+  date: string;
+  data: Record<number, any>;
+  diagnostic?: string;
+}
 
-  async init(): Promise<void> {
-    if (this.db) return;
+export interface PaymentMethod {
+  id: string;
+  name?: string;
+  type: 'cash' | 'card' | 'check' | 'transfer' | 'bank' | 'qr';
+  active?: boolean;
+  label?: string;
+  value?: string;
+  qrImage?: string;
+}
 
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        
-        const stores = [
-          'users', 'patients', 'treatments', 'patient_treatments', 'appointments', 
-          'payments', 'radiographs', 'consents', 'odontograms', 'subscription_payments',
-          'payment_methods', 'inventory'
-        ];
-
-        stores.forEach(store => {
-          if (!db.objectStoreNames.contains(store)) {
-            db.createObjectStore(store, { keyPath: 'id' });
-          }
-        });
-      };
-
-      request.onsuccess = (event) => {
-        this.db = (event.target as IDBOpenDBRequest).result;
-        resolve();
-      };
-
-      request.onerror = (event) => {
-        reject((event.target as IDBOpenDBRequest).error);
-      };
-    });
-  }
-
-  async getAll<T>(storeName: string): Promise<T[]> {
-    await this.init();
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(storeName, 'readonly');
-      const store = transaction.objectStore(storeName);
-      const request = store.getAll();
-
-      request.onsuccess = () => resolve(request.result || []);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async getById<T>(storeName: string, id: string): Promise<T | undefined> {
-    await this.init();
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(storeName, 'readonly');
-      const store = transaction.objectStore(storeName);
-      const request = store.get(id);
-
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async put(storeName: string, data: any): Promise<void> {
-    await this.init();
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(storeName, 'readwrite');
-      const store = transaction.objectStore(storeName);
-      const request = store.put(data);
-
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async delete(storeName: string, id: string): Promise<void> {
-    await this.init();
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(storeName, 'readwrite');
-      const store = transaction.objectStore(storeName);
-      const request = store.delete(id);
-
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
-
+// Stub db object (retorna arrays vacíos para que .filter() funcione)
+// TODO: Reemplazar con llamadas a API
+export const db = {
+  async getAll<T = unknown>(table: string): Promise<T[]> {
+    console.warn(`⚠️ db.getAll('${table}') es DEPRECATED. Usa fetch("/api/${table}") en lugar.`);
+    return [] as T[];
+  },
+  async getAllUsers(): Promise<User[]> {
+    console.warn('⚠️ db.getAllUsers() es DEPRECATED. Usa fetch("/api/users") en lugar.');
+    return [];
+  },
+  async getAllPatients(): Promise<Patient[]> {
+    console.warn('⚠️ db.getAllPatients() es DEPRECATED. Usa fetch("/api/patients") en lugar.');
+    return [];
+  },
+  async getAllAppointments(): Promise<Appointment[]> {
+    console.warn('⚠️ db.getAllAppointments() es DEPRECATED. Usa fetch("/api/appointments") en lugar.');
+    return [];
+  },
+  async getAllPayments(): Promise<Payment[]> {
+    console.warn('⚠️ db.getAllPayments() es DEPRECATED. Usa fetch("/api/payments") en lugar.');
+    return [];
+  },
+  async getById<T = unknown>(table: string, id: string): Promise<T | null> {
+    console.warn(`⚠️ db.getById('${table}', '${id}') es DEPRECATED. Usa fetch("/api/${table}/${id}") en lugar.`);
+    return null;
+  },
   async exportData(): Promise<string> {
-    await this.init();
-    const stores = ['users', 'patients', 'treatments', 'patient_treatments', 'appointments', 'payments', 'radiographs', 'consents', 'odontograms', 'subscription_payments', 'payment_methods', 'inventory'];
-    const data: any = {};
+    console.warn('⚠️ db.exportData() es DEPRECATED. Usa endpoint de backups en lugar.');
+    return JSON.stringify({
+      exportedAt: new Date().toISOString(),
+      data: {},
+    });
+  },
+  async importData(_data: unknown): Promise<void> {
+    console.warn('⚠️ db.importData() es DEPRECATED. Usa endpoint de backups en lugar.');
+  },
+  put: async (tableOrData: string | unknown, maybeData?: unknown): Promise<null> => {
+    const hasTable = typeof tableOrData === 'string';
+    const target = hasTable ? tableOrData : 'unknown';
+    const payload = hasTable ? maybeData : tableOrData;
+    void payload;
+    console.warn(`⚠️ db.put('${target}', data) es DEPRECATED. Usa useMutation() con endpoints POST/PUT en lugar.`);
+    return null;
+  },
+  delete: async (table: string, id: string) => {
+    console.warn(`⚠️ db.delete('${table}', '${id}') es DEPRECATED. Usa useMutation(..., 'DELETE') en lugar.`);
+    return null;
+  },
+};
 
-    for (const store of stores) {
-      const items = await this.getAll(store);
-      data[store] = await Promise.all(items.map(async (item: any) => {
-        if (item.fileBlob instanceof Blob) {
-          const reader = new FileReader();
-          const base64 = await new Promise<string>((resolve) => {
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(item.fileBlob);
-          });
-          return { ...item, fileBlob: base64 };
-        }
-        return item;
-      }));
-    }
-
-    return JSON.stringify(data);
-  }
-
-  async importData(jsonData: string): Promise<void> {
-    await this.init();
-    const data = JSON.parse(jsonData);
-    const stores = Object.keys(data);
-
-    for (const storeName of stores) {
-      if (!this.db!.objectStoreNames.contains(storeName)) continue;
-      const transaction = this.db!.transaction(storeName, 'readwrite');
-      const store = transaction.objectStore(storeName);
-      store.clear();
-
-      for (const item of data[storeName]) {
-        let finalItem = { ...item };
-        if (typeof item.fileBlob === 'string' && item.fileBlob.startsWith('data:')) {
-          const res = await fetch(item.fileBlob);
-          finalItem.fileBlob = await res.blob();
-        }
-        store.put(finalItem);
-      }
-    }
-  }
-}
-
-export const db = new LocalDB();
+console.warn(
+  '⚠️ [DEPRECATED] src/lib/db.ts es un archivo legacy. Las páginas admin deberían migrar a useApi/useMutation hooks.'
+);
