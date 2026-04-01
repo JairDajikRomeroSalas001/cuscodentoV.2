@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, Lock } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; ;
 
 function LoginContent() {
   const [identifier, setIdentifier] = useState('');
@@ -56,10 +56,13 @@ function LoginContent() {
       <Card className="w-full max-w-md relative z-10 shadow-2xl border-none rounded-[2.5rem] overflow-hidden">
         <div className="h-2 bg-primary" />
         <CardHeader className="space-y-1 text-center pt-10">
-          <div className="w-20 h-20 bg-primary rounded-3xl mx-auto mb-6 flex items-center justify-center text-primary-foreground shadow-xl ring-4 ring-primary/10">
-             <span className="text-4xl font-black">K</span>
-          </div>
-          <CardTitle className="text-4xl font-black tracking-tighter text-primary">KuskoDento</CardTitle>
+            <div className="w-48 h-auto mx-auto mb-6 flex items-center justify-center">
+              <img 
+                src="/dento.png" 
+                alt="Logo Dento" 
+                className="w-full h-full object-contain filter drop-shadow-[0_10px_15px_rgba(0,0,0,0.4)]" 
+              />
+            </div>
           <CardDescription className="text-base font-bold text-slate-500 uppercase tracking-widest pt-2">
             Sistema de Gestión Odontológica
           </CardDescription>
