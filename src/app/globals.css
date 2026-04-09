@@ -191,3 +191,8 @@
     color: black !important;
   }
 }
+
+/* Oculta el indicador flotante de Next.js en desarrollo (circulo negro con "N"). */
+nextjs-portal {
+  display: none !important;
+}

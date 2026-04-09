@@ -1,7 +1,14 @@
 import { CreatePatientSchema } from '@/lib/validators';
-import { apiError, apiOk } from '@/lib/api-response';
+import { apiError, apiErrorFromUnknown, apiOk } from '@/lib/api-response';
 import { getRequestContext } from '@/lib/request-context';
 import { patientService } from '@/services/patient.service';
+import type { PatientsListView } from '@/types/dto';
+
+function resolvePatientsView(value: string | null): PatientsListView {
+  if (value === 'full') return 'full';
+  if (value === 'lookup') return 'lookup';
+  return 'summary';
+}
 
 export async function GET(request: Request) {
   try {
@@ -10,6 +17,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const q = searchParams.get('q');
+    const view = resolvePatientsView(searchParams.get('view'));
 
     if (q) {
       const data = await patientService.search(clinicId, q);
@@ -18,12 +26,11 @@ export async function GET(request: Request) {
 
     const page = Number(searchParams.get('page') || 1);
     const limit = Number(searchParams.get('limit') || 20);
-    const data = await patientService.getByClinic(clinicId, page, limit);
+    const data = await patientService.getByClinic(clinicId, page, limit, view);
 
     return apiOk(data);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Error interno';
-    return apiError(message, 500);
+    return apiErrorFromUnknown(error, 500, 'api/patients#get');
   }
 }
 
@@ -43,6 +50,6 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error interno';
     const status = message.includes('DNI ya registrado') ? 400 : 500;
-    return apiError(message, status);
+    return apiErrorFromUnknown(error, status, 'api/patients#post');
   }
 }

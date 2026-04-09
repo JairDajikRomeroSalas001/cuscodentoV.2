@@ -1,6 +1,10 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { verifyPassword } from '@/lib/hash';
 import { signJWT } from '@/lib/jwt';
+import type { JwtClaimsDTO } from '@/types/dto';
+
+const DEFAULT_SUBSCRIPTION_FEE = 50;
 
 interface LoginInput {
   identifier?: string;
@@ -50,17 +54,17 @@ export const authService = {
 
     const token = signJWT(
       {
-        user_id: user.id,
+        sub: user.id,
         clinic_id: user.clinic_id,
         role: user.role,
-        email: user.email || '',
-      },
+      } satisfies JwtClaimsDTO,
       process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || 'dev-secret'
     );
 
     const clinic = user.clinic as typeof user.clinic & {
       primary_color?: string | null;
       slogan?: string | null;
+      subscription_fee?: Prisma.Decimal | number | null;
     };
 
     return {
@@ -80,6 +84,7 @@ export const authService = {
         primary_color: clinic.primary_color,
         slogan: clinic.slogan,
         theme: clinic.theme,
+        subscription_fee: Number(clinic.subscription_fee ?? DEFAULT_SUBSCRIPTION_FEE),
         subscription_status: clinic.subscription_status,
         next_payment_date: clinic.next_payment_date,
       },
@@ -99,6 +104,7 @@ export const authService = {
     const clinic = user.clinic as typeof user.clinic & {
       primary_color?: string | null;
       slogan?: string | null;
+      subscription_fee?: Prisma.Decimal | number | null;
     };
 
     return {
@@ -117,9 +123,22 @@ export const authService = {
         primary_color: clinic.primary_color,
         slogan: clinic.slogan,
         theme: clinic.theme,
+        subscription_fee: Number(clinic.subscription_fee ?? DEFAULT_SUBSCRIPTION_FEE),
         subscription_status: clinic.subscription_status,
         next_payment_date: clinic.next_payment_date,
       },
     };
+  },
+
+  async getUserIdentity(userId: string, clinicId: string) {
+    return prisma.user.findFirst({
+      where: { id: userId, clinic_id: clinicId },
+      select: {
+        id: true,
+        role: true,
+        clinic_id: true,
+        email: true,
+      },
+    });
   },
 };

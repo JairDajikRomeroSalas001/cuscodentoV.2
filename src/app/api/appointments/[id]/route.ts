@@ -1,4 +1,4 @@
-import { apiError, apiOk } from '@/lib/api-response';
+import { apiError, apiErrorFromUnknown, apiOk } from '@/lib/api-response';
 import { getRequestContext } from '@/lib/request-context';
 import { appointmentService } from '@/services/appointment.service';
 
@@ -13,8 +13,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     if (!appointment) return apiError('Cita no encontrada', 404);
     return apiOk(appointment);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Error interno';
-    return apiError(message, 500);
+    return apiErrorFromUnknown(error, 500, 'api/appointments/[id]#get');
   }
 }
 
@@ -33,7 +32,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error interno';
     const status = message === 'Cita no encontrada' ? 404 : 500;
-    return apiError(message, status);
+    return apiErrorFromUnknown(error, status, 'api/appointments/[id]#patch');
   }
 }
 
@@ -48,6 +47,6 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error interno';
     const status = message === 'Cita no encontrada' ? 404 : 500;
-    return apiError(message, status);
+    return apiErrorFromUnknown(error, status, 'api/appointments/[id]#delete');
   }
 }

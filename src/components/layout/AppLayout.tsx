@@ -96,6 +96,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const isBlocked = currentStatus === 'blocked';
   const isOverdue = currentStatus === 'overdue';
   const graceDay = isOverdue ? Math.min(overdueDays, 7) : 0;
+  const subscriptionFee = typeof user?.subscriptionFee === 'number' ? user.subscriptionFee : 50;
   const reminderIntervalMs = graceDay > 0 ? getReminderIntervalMs(graceDay) : 0;
   const reminderIntervalLabel = graceDay > 0 ? getReminderIntervalLabel(graceDay) : '';
 
@@ -299,7 +300,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   <div className="space-y-2">
                     <p className="flex justify-between text-[11px] font-bold">
                       <span className="text-muted-foreground">ABONO:</span>
-                      <span className="text-primary">S/. {user.subscriptionFee?.toFixed(2)}</span>
+                      <span className="text-primary">S/. {subscriptionFee.toFixed(2)}</span>
                     </p>
                     {user.nextPaymentDate && (
                       <p className="flex justify-between text-[11px] font-bold">
@@ -490,7 +491,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <div className="bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-100 dark:border-amber-800 p-8 rounded-[2rem] flex items-center justify-between shadow-inner">
                 <div className="text-left">
                   <p className="text-[11px] font-black text-amber-800 dark:text-amber-300 uppercase tracking-widest">Monto Pendiente</p>
-                  <p className="text-4xl font-black text-amber-600 dark:text-amber-500 mt-1">S/. {user.subscriptionFee?.toFixed(2)}</p>
+                  <p className="text-4xl font-black text-amber-600 dark:text-amber-500 mt-1">S/. {subscriptionFee.toFixed(2)}</p>
                   <p className="text-[11px] font-black text-amber-700 dark:text-amber-300 uppercase tracking-widest mt-3">Recordatorio cada {reminderIntervalLabel}</p>
                 </div>
                 <div className="text-right">

@@ -1,5 +1,5 @@
 import { UpdatePatientSchema } from '@/lib/validators';
-import { apiError, apiOk } from '@/lib/api-response';
+import { apiError, apiErrorFromUnknown, apiOk } from '@/lib/api-response';
 import { getRequestContext } from '@/lib/request-context';
 import { patientService } from '@/services/patient.service';
 
@@ -18,8 +18,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     if (!patient) return apiError('Paciente no encontrado', 404);
     return apiOk(patient);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Error interno';
-    return apiError(message, 500);
+    return apiErrorFromUnknown(error, 500, 'api/patients/[id]#get');
   }
 }
 
@@ -38,7 +37,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error interno';
     const status = resolvePatientErrorStatus(message);
-    return apiError(message, status);
+    return apiErrorFromUnknown(error, status, 'api/patients/[id]#put');
   }
 }
 
@@ -53,6 +52,6 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error interno';
     const status = resolvePatientErrorStatus(message);
-    return apiError(message, status);
+    return apiErrorFromUnknown(error, status, 'api/patients/[id]#delete');
   }
 }

@@ -5,7 +5,6 @@ import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import { Card } from '@/components/ui/card';
 import { UserPlus, Search, Eye, Trash2, ShieldAlert } from 'lucide-react';
@@ -20,13 +19,6 @@ type ApiPatient = {
   id: string;
   dni: string;
   full_name: string;
-  first_name?: string | null;
-  last_name?: string | null;
-  email?: string | null;
-  phone: string;
-  address: string;
-  medical_observations?: string | null;
-  created_at?: string;
 };
 
 function splitName(fullName: string) {
@@ -108,7 +100,7 @@ function PatientsContent() {
   const loadData = async () => {
     try {
       const data = await apiRequest<{ items: ApiPatient[]; total: number; page: number; limit: number; totalPages: number }>(
-        '/api/patients?limit=200'
+        '/api/patients?limit=200&view=summary'
       );
       setPatients(data.items || []);
     } catch (error) {
@@ -327,8 +319,6 @@ function PatientsContent() {
                 <TableRow>
                   <TableHead className="font-black uppercase text-[10px] tracking-widest">Documento</TableHead>
                   <TableHead className="font-black uppercase text-[10px] tracking-widest">Paciente</TableHead>
-                  <TableHead className="font-black uppercase text-[10px] tracking-widest">Celular</TableHead>
-                  <TableHead className="font-black uppercase text-[10px] tracking-widest">Correo</TableHead>
                   <TableHead className="text-right font-black uppercase text-[10px] tracking-widest">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -341,12 +331,6 @@ function PatientsContent() {
                         <TableCell className="font-mono text-xs">{p.dni}</TableCell>
                         <TableCell className="font-black text-slate-800 dark:text-slate-100">
                           {nameData.lastNames ? `${nameData.lastNames}, ${nameData.names}` : p.full_name}
-                        </TableCell>
-                        <TableCell className="text-sm font-medium">{p.phone}</TableCell>
-                        <TableCell className="text-sm">
-                          <Badge variant="outline" className="bg-primary/5 text-primary border-primary/10">
-                            {p.email || 'Sin correo'}
-                          </Badge>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
@@ -370,7 +354,7 @@ function PatientsContent() {
                   })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-24 text-muted-foreground bg-slate-50/30 dark:bg-slate-800/40">
+                    <TableCell colSpan={3} className="text-center py-24 text-muted-foreground bg-slate-50/30 dark:bg-slate-800/40">
                       <UserPlus className="w-12 h-12 mx-auto mb-4 opacity-10" />
                       <p className="font-bold uppercase tracking-widest text-xs">No se encontraron registros</p>
                     </TableCell>

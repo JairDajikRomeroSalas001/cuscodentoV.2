@@ -128,8 +128,8 @@ function PaymentsContent() {
     try {
       const [paymentsData, completedAppointmentsData, attendedAppointmentsData] = await Promise.all([
         apiRequest<ApiPayment[] | { items: ApiPayment[] }>('/api/payments'),
-        apiRequest<ApiAppointment[] | { items: ApiAppointment[] }>('/api/appointments?status=completed'),
-        apiRequest<ApiAppointment[] | { items: ApiAppointment[] }>('/api/appointments?status=attended'),
+        apiRequest<ApiAppointment[] | { items: ApiAppointment[] }>('/api/appointments?status=completed&view=billing'),
+        apiRequest<ApiAppointment[] | { items: ApiAppointment[] }>('/api/appointments?status=attended&view=billing'),
       ]);
 
       let items: ApiPayment[] = [];

@@ -348,7 +348,7 @@ export const db = {
           prone_to_bleeding?: boolean;
           allergic_to_meds?: boolean;
           medical_observations?: string | null;
-        }> }>('/api/patients?limit=200');
+        }> }>('/api/patients?limit=200&view=full');
 
         const items = (data.items || []).map((item) => {
           const names = splitName(item.full_name);

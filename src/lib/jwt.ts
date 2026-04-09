@@ -1,11 +1,7 @@
 import jwt from 'jsonwebtoken';
+import type { JwtClaimsDTO } from '@/types/dto';
 
-export interface AuthJwtPayload {
-  user_id: string;
-  clinic_id: string;
-  role: string;
-  email: string;
-}
+export type AuthJwtPayload = JwtClaimsDTO;
 
 const DEFAULT_EXPIRATION: jwt.SignOptions['expiresIn'] = '7d';
 
@@ -24,9 +20,8 @@ export function verifyJWT(token: string, secret: string): AuthJwtPayload {
   }
 
   return {
-    user_id: String(decoded.user_id),
+    sub: String(decoded.sub),
     clinic_id: String(decoded.clinic_id),
     role: String(decoded.role),
-    email: String(decoded.email),
   };
 }

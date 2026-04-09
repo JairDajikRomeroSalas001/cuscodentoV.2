@@ -29,6 +29,7 @@ type SaveUserPayload = {
   address?: string;
   colegiatura?: string;
   role?: AdminUserRole;
+  subscriptionFee?: number;
   subscriptionStatus?: 'active' | 'suspended' | 'blocked';
   nextPaymentDate?: string;
   contractStartDate?: string;
@@ -152,6 +153,7 @@ function UsersContent() {
       colegiatura: form.colegiatura,
       photo: photoPreview || undefined,
       role: isAdmin ? 'clinic' : form.role,
+      subscriptionFee: isAdmin ? (parseFloat(form.subscriptionFee) || 0) : undefined,
       subscriptionStatus: form.subscriptionStatus,
       nextPaymentDate: isAdmin ? form.nextPaymentDate : undefined,
       contractStartDate: isAdmin ? form.contractStartDate : undefined,

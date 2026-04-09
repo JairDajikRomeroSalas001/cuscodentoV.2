@@ -8,8 +8,14 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, Lock } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; ;
+import { AlertCircle, LifeBuoy, Lock } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
+const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || '2.3.0';
+const SUPPORT_WHATSAPP = '51929110834';
+const SUPPORT_MESSAGE = encodeURIComponent(
+  'Hola, deseo informacion para implementar CuscoDent en un nuevo consultorio dental.'
+);
 
 function LoginContent() {
   const [identifier, setIdentifier] = useState('');
@@ -51,7 +57,13 @@ function LoginContent() {
   const isLocked = remainingSeconds > 0;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4 bg-[url('https://images.unsplash.com/photo-1598256989800-fe5f95da9787?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center">
+    <div
+      className="min-h-screen flex items-center justify-center bg-background p-4 bg-cover bg-center"
+      style={{
+        backgroundImage:
+          "linear-gradient(rgba(15, 118, 110, 0.35), rgba(15, 118, 110, 0.35)), url('https://images.unsplash.com/photo-1598256989800-fe5f95da9787?q=80&w=2070&auto=format&fit=crop')",
+      }}
+    >
       <div className="absolute inset-0 bg-primary/40 backdrop-blur-sm"></div>
       <Card className="w-full max-w-md relative z-10 shadow-2xl border-none rounded-[2.5rem] overflow-hidden">
         <div className="h-2 bg-primary" />
@@ -123,7 +135,23 @@ function LoginContent() {
             </Button>
           </CardFooter>
         </form>
+        <div className="px-8 pb-8 text-center">
+          <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">
+            Version {APP_VERSION}
+          </p>
+          <p className="mt-1 text-xs font-semibold text-slate-500/90">Created by CodexCusco</p>
+        </div>
       </Card>
+
+      <a
+        href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${SUPPORT_MESSAGE}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-4 left-4 z-20 inline-flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-3 text-xs font-black uppercase tracking-wider text-white shadow-2xl shadow-emerald-700/25 transition-all hover:bg-emerald-700 active:scale-95"
+      >
+        <LifeBuoy className="h-4 w-4" />
+        Soporte Nuevos Consultorios
+      </a>
     </div>
   );
 }

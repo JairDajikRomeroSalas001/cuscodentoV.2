@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { LoginSchema } from '@/lib/validators';
-import { apiError, apiOk } from '@/lib/api-response';
+import { apiError, apiErrorFromUnknown, apiOk } from '@/lib/api-response';
 import { authService } from '@/services/auth.service';
 
 export async function POST(request: Request) {
@@ -27,6 +27,6 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error interno';
     const status = message === 'Credenciales invalidas' ? 401 : 500;
-    return apiError(message, status);
+    return apiErrorFromUnknown(error, status, 'api/auth/login#post');
   }
 }
