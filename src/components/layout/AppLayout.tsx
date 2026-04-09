@@ -349,7 +349,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 {user.theme === 'dark' ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />}
               </Button>
               <div className="h-10 w-[1px] bg-slate-100 dark:bg-slate-800" />
-              <div className="flex items-center gap-4 px-2 group cursor-pointer" onClick={() => window.location.href = '/profile'}>
+              <Link href="/profile" className="flex items-center gap-4 px-2 group cursor-pointer">
                 <div className="text-right hidden sm:block">
                   <p className="text-sm font-black text-slate-900 dark:text-white leading-none">{user.fullName || user.username}</p>
                   <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-1">{isAdmin ? 'Master Admin' : user.role}</p>
@@ -357,7 +357,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <div className="w-12 h-12 rounded-2xl bg-primary flex items-center justify-center text-white text-lg font-black shadow-lg group-hover:scale-110 transition-transform">
                   {(user.fullName || user.username || 'U').charAt(0).toUpperCase()}
                 </div>
-              </div>
+              </Link>
             </div>
           </header>
           <main className="flex-1 overflow-auto p-10 relative scrollbar-hide">

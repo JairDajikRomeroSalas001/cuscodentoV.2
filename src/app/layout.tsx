@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import { PT_Sans } from 'next/font/google';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
+import { AuthProvider } from '@/hooks/use-auth';
 
 const ptSans = PT_Sans({
   subsets: ['latin'],
@@ -38,8 +39,10 @@ export default async function RootLayout({
         >
           {`window.__CSP_NONCE__ = '${nonce || ''}';`}
         </Script>
-        {children}
-        <Toaster />
+        <AuthProvider>
+          {children}
+          <Toaster />
+        </AuthProvider>
       </body>
     </html>
   );

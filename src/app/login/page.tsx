@@ -8,11 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, LifeBuoy, Lock } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, LifeBuoy, Lock } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || '2.3.0';
-const SUPPORT_WHATSAPP = '51929110834';
+const SUPPORT_WHATSAPP = '51972156954';
 const SUPPORT_MESSAGE = encodeURIComponent(
   'Hola, deseo informacion para implementar CuscoDent en un nuevo consultorio dental.'
 );
@@ -20,6 +20,7 @@ const SUPPORT_MESSAGE = encodeURIComponent(
 function LoginContent() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const { login, lockoutUntil } = useAuth();
@@ -113,16 +114,27 @@ function LoginContent() {
             </div>
             <div className="space-y-3">
               <Label htmlFor="password" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Contraseña</Label>
-              <Input 
-                id="password" 
-                type="password" 
-                placeholder="••••••••" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={isLocked}
-                className="h-14 rounded-2xl bg-slate-50 border-none shadow-inner text-lg focus:bg-white transition-all"
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={isLocked}
+                  className="h-14 rounded-2xl bg-slate-50 border-none shadow-inner text-lg focus:bg-white transition-all pr-14"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  disabled={isLocked}
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  className="absolute inset-y-0 right-0 flex w-14 items-center justify-center text-slate-500 transition-colors hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
             </div>
           </CardContent>
           <CardFooter className="px-8 pb-10 pt-2">

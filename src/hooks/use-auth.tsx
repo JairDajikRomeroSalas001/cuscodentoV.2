@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 type Role = 'admin' | 'clinic' | 'doctor' | 'assistant' | 'technician' | string;
 type ThemePreference = 'light' | 'dark' | 'system';
@@ -172,12 +172,30 @@ async function fetchMe(): Promise<AuthUser | null> {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const parentContext = useContext(AuthContext);
+  if (parentContext) {
+    return <>{children}</>;
+  }
+
+  return <AuthProviderRoot>{children}</AuthProviderRoot>;
+}
+
+function AuthProviderRoot({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     let mounted = true;
+
+    if (pathname === '/login') {
+      setUser(null);
+      setIsLoading(false);
+      return () => {
+        mounted = false;
+      };
+    }
 
     const initAuth = async () => {
       try {
@@ -195,7 +213,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [pathname]);
 
   const login = useCallback(async (identifier: string, password: string, clinicId?: string) => {
     try {
