@@ -1,4 +1,4 @@
-import { apiError, apiOk } from '@/lib/api-response';
+import { apiError, apiErrorFromUnknown, apiOk } from '@/lib/api-response';
 import { getRequestContext } from '@/lib/request-context';
 import { adminService } from '@/services/admin.service';
 
@@ -26,6 +26,15 @@ async function getActorOrError() {
   return { actor };
 }
 
+function parseSubscriptionFee(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
 export async function GET() {
   try {
     const auth = await getActorOrError();
@@ -34,8 +43,7 @@ export async function GET() {
     const items = await adminService.listUsers(auth.actor);
     return apiOk({ items });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Error interno';
-    return apiError(message, resolveStatus(error));
+    return apiErrorFromUnknown(error, resolveStatus(error), 'api/admin/users.GET');
   }
 }
 
@@ -53,6 +61,7 @@ export async function POST(request: Request) {
       address: typeof body.address === 'string' ? body.address : undefined,
       colegiatura: typeof body.colegiatura === 'string' ? body.colegiatura : undefined,
       role: typeof body.role === 'string' ? (body.role as any) : undefined,
+      subscriptionFee: parseSubscriptionFee(body.subscriptionFee),
       subscriptionStatus:
         body.subscriptionStatus === 'active' || body.subscriptionStatus === 'suspended' || body.subscriptionStatus === 'blocked'
           ? body.subscriptionStatus
@@ -65,8 +74,7 @@ export async function POST(request: Request) {
 
     return apiOk(created, 201);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Error interno';
-    return apiError(message, resolveStatus(error));
+    return apiErrorFromUnknown(error, resolveStatus(error), 'api/admin/users.POST');
   }
 }
 
@@ -90,6 +98,7 @@ export async function PUT(request: Request) {
       address: typeof body.address === 'string' ? body.address : undefined,
       colegiatura: typeof body.colegiatura === 'string' ? body.colegiatura : undefined,
       role: typeof body.role === 'string' ? (body.role as any) : undefined,
+      subscriptionFee: parseSubscriptionFee(body.subscriptionFee),
       subscriptionStatus:
         body.subscriptionStatus === 'active' || body.subscriptionStatus === 'suspended' || body.subscriptionStatus === 'blocked'
           ? body.subscriptionStatus
@@ -102,8 +111,7 @@ export async function PUT(request: Request) {
 
     return apiOk(updated);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Error interno';
-    return apiError(message, resolveStatus(error));
+    return apiErrorFromUnknown(error, resolveStatus(error), 'api/admin/users.PUT');
   }
 }
 
@@ -121,7 +129,6 @@ export async function DELETE(request: Request) {
     const result = await adminService.deleteUser(auth.actor, id);
     return apiOk(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Error interno';
-    return apiError(message, resolveStatus(error));
+    return apiErrorFromUnknown(error, resolveStatus(error), 'api/admin/users.DELETE');
   }
 }

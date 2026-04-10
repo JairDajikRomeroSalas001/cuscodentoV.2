@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useApi } from '@/hooks/use-api';
@@ -29,6 +29,7 @@ type SaveUserPayload = {
   address?: string;
   colegiatura?: string;
   role?: AdminUserRole;
+  subscriptionFee?: number;
   subscriptionStatus?: 'active' | 'suspended' | 'blocked';
   nextPaymentDate?: string;
   contractStartDate?: string;
@@ -61,6 +62,16 @@ function UsersContent() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isValidatingDni, setIsValidatingDni] = useState(false);
+  const [isBillingScheduleDirty, setIsBillingScheduleDirty] = useState(false);
+  const todayDate = new Date().toISOString().split('T')[0];
+
+  const calculateNextPaymentDate = (contractStartDate: string, installmentsValue: string) => {
+    if (!contractStartDate) return '';
+    const start = parseISO(contractStartDate);
+    if (!isValid(start)) return '';
+    const installments = parseInt(installmentsValue) || 1;
+    return format(addMonths(start, installments), 'yyyy-MM-dd');
+  };
   
   const [form, setForm] = useState({ 
     username: '', 
@@ -71,23 +82,12 @@ function UsersContent() {
     colegiatura: '',
     role: 'doctor' as AdminUserRole,
     subscriptionFee: '50',
-    nextPaymentDate: '',
-    contractStartDate: new Date().toISOString().split('T')[0],
+    nextPaymentDate: calculateNextPaymentDate(todayDate, '1'),
+    contractStartDate: todayDate,
     paymentFrequency: 'monthly' as 'monthly' | 'yearly',
     advanceInstallments: '1',
     subscriptionStatus: 'active' as 'active' | 'suspended' | 'blocked'
   });
-
-  useEffect(() => {
-    if (currentUser?.role === 'admin' && form.contractStartDate && !editingId) {
-      const installments = parseInt(form.advanceInstallments) || 1;
-      const start = parseISO(form.contractStartDate);
-      if (isValid(start)) {
-        const next = addMonths(start, installments);
-        setForm(prev => ({ ...prev, nextPaymentDate: format(next, 'yyyy-MM-dd') }));
-      }
-    }
-  }, [form.contractStartDate, form.advanceInstallments, currentUser?.role, editingId]);
 
   const safeFormatDate = (dateStr?: string) => {
     if (!dateStr) return '---';
@@ -153,6 +153,7 @@ function UsersContent() {
       colegiatura: form.colegiatura,
       photo: photoPreview || undefined,
       role: isAdmin ? 'clinic' : form.role,
+      subscriptionFee: isAdmin ? (parseFloat(form.subscriptionFee) || 0) : undefined,
       subscriptionStatus: form.subscriptionStatus,
       nextPaymentDate: isAdmin ? form.nextPaymentDate : undefined,
       contractStartDate: isAdmin ? form.contractStartDate : undefined,
@@ -212,6 +213,7 @@ function UsersContent() {
   const resetForm = () => {
     setEditingId(null);
     setPhotoPreview(null);
+    setIsBillingScheduleDirty(false);
     setForm({ 
       username: '', 
       password: '', 
@@ -221,8 +223,8 @@ function UsersContent() {
       colegiatura: '',
       role: currentUser?.role === 'clinic' ? 'doctor' : 'clinic',
       subscriptionFee: '50',
-      nextPaymentDate: '',
-      contractStartDate: new Date().toISOString().split('T')[0],
+      nextPaymentDate: calculateNextPaymentDate(todayDate, '1'),
+      contractStartDate: todayDate,
       paymentFrequency: 'monthly',
       advanceInstallments: '1',
       subscriptionStatus: 'active'
@@ -248,6 +250,7 @@ function UsersContent() {
 
   const openEdit = (u: AdminUser) => {
     setEditingId(u.id);
+    setIsBillingScheduleDirty(false);
     setForm({ 
       username: u.username || '', 
       password: '', 
@@ -375,7 +378,7 @@ function UsersContent() {
                     <>
                       <div className="space-y-3">
                         <Label htmlFor="username" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">ID de Usuario</Label>
-                        <Input id="username" value={form.username} onChange={e => setForm({...form, username: e.target.value})} required={isAdmin} className={fieldClassName} />
+                        <Input id="username" value={form.username} onChange={e => setForm({...form, username: e.target.value})} required={isAdmin && !editingId} className={fieldClassName} />
                       </div>
                       <div className="space-y-3">
                         <Label htmlFor="password" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Clave de Seguridad</Label>
@@ -394,7 +397,15 @@ function UsersContent() {
                               <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Fecha de Activación</Label>
                               <div className="relative">
                                 <Calendar className="absolute left-4 top-3.5 w-5 h-5 text-primary" />
-                                <Input type="date" value={form.contractStartDate} onChange={e => setForm({...form, contractStartDate: e.target.value})} className={cn("pl-12", fieldClassName)} />
+                                <Input type="date" value={form.contractStartDate} onChange={e => {
+                                  const contractStartDate = e.target.value;
+                                  setIsBillingScheduleDirty(true);
+                                  setForm({
+                                    ...form,
+                                    contractStartDate,
+                                    nextPaymentDate: calculateNextPaymentDate(contractStartDate, form.advanceInstallments),
+                                  });
+                                }} className={cn("pl-12", fieldClassName)} />
                               </div>
                             </div>
                             
@@ -405,7 +416,15 @@ function UsersContent() {
 
                             <div className="space-y-3">
                               <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Cuotas Adelantadas</Label>
-                              <Select value={form.advanceInstallments} onValueChange={(v: any) => setForm({...form, advanceInstallments: v})}>
+                              <Select value={form.advanceInstallments} onValueChange={(v: any) => {
+                                const nextInstallments = String(v);
+                                setIsBillingScheduleDirty(true);
+                                setForm({
+                                  ...form,
+                                  advanceInstallments: nextInstallments,
+                                  nextPaymentDate: calculateNextPaymentDate(form.contractStartDate, nextInstallments),
+                                });
+                              }}>
                                 <SelectTrigger className="h-12 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-inner font-bold text-slate-900 dark:text-slate-100"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   {installmentOptions.map(n => (
@@ -565,7 +584,7 @@ function UsersContent() {
               <Building2 className="w-24 h-24 text-slate-400" />
               <div className="space-y-2">
                 <p className="font-black text-2xl uppercase tracking-widest">Sin consultorios registrados</p>
-                <p className="text-sm font-medium">Inicie la expansión de la red añadiendo el primer establecimiento.</p>
+                        <Input id="username" value={form.username} onChange={e => setForm({...form, username: e.target.value})} required={isAdmin && !editingId} className={fieldClassName} />
               </div>
             </div>
           )}

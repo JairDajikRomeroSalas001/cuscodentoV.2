@@ -1,12 +1,13 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 type Role = 'admin' | 'clinic' | 'doctor' | 'assistant' | 'technician' | string;
 type ThemePreference = 'light' | 'dark' | 'system';
 
 const THEME_STORAGE_PREFIX = 'kuskodento_theme';
+const DEFAULT_SUBSCRIPTION_FEE = 50;
 
 export interface AuthUser {
   id: string;
@@ -50,6 +51,7 @@ interface MeResponse {
       id: string;
       name: string;
       domain: string;
+      subscription_fee?: number | null;
       subscription_status?: 'active' | 'suspended' | 'blocked';
       theme?: string;
       logo_url?: string | null;
@@ -73,6 +75,7 @@ type AuthPayload = {
     id: string;
     name: string;
     domain: string;
+    subscription_fee?: number | null;
     subscription_status?: 'active' | 'suspended' | 'blocked';
     theme?: string;
     logo_url?: string | null;
@@ -144,6 +147,10 @@ function normalizeUser(payload: NonNullable<MeResponse['data']>): AuthUser {
     primaryColor: payload.clinic.primary_color ?? undefined,
     brandName: payload.clinic.name,
     slogan: payload.clinic.slogan ?? payload.clinic.domain,
+    subscriptionFee:
+      typeof payload.clinic.subscription_fee === 'number'
+        ? payload.clinic.subscription_fee
+        : DEFAULT_SUBSCRIPTION_FEE,
     photo: payload.clinic.logo_url ?? undefined,
     nextPaymentDate: payload.clinic.next_payment_date ?? undefined,
   };
@@ -165,12 +172,30 @@ async function fetchMe(): Promise<AuthUser | null> {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const parentContext = useContext(AuthContext);
+  if (parentContext) {
+    return <>{children}</>;
+  }
+
+  return <AuthProviderRoot>{children}</AuthProviderRoot>;
+}
+
+function AuthProviderRoot({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     let mounted = true;
+
+    if (pathname === '/login') {
+      setUser(null);
+      setIsLoading(false);
+      return () => {
+        mounted = false;
+      };
+    }
 
     const initAuth = async () => {
       try {
@@ -188,7 +213,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [pathname]);
 
   const login = useCallback(async (identifier: string, password: string, clinicId?: string) => {
     try {

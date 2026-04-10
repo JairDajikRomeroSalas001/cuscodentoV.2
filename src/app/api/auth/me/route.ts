@@ -1,5 +1,5 @@
 import { getRequestContext } from '@/lib/request-context';
-import { apiError, apiOk } from '@/lib/api-response';
+import { apiError, apiErrorFromUnknown, apiOk } from '@/lib/api-response';
 import { authService } from '@/services/auth.service';
 
 export async function GET() {
@@ -12,7 +12,6 @@ export async function GET() {
     const data = await authService.me(userId, clinicId);
     return apiOk(data);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Error interno';
-    return apiError(message, 500);
+    return apiErrorFromUnknown(error, 500, 'api/auth/me#get');
   }
 }

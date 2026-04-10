@@ -1,7 +1,12 @@
 import { CreateAppointmentSchema } from '@/lib/validators';
-import { apiError, apiOk } from '@/lib/api-response';
+import { apiError, apiErrorFromUnknown, apiOk } from '@/lib/api-response';
 import { getRequestContext } from '@/lib/request-context';
 import { appointmentService } from '@/services/appointment.service';
+import type { AppointmentsListView } from '@/types/dto';
+
+function resolveAppointmentsView(value: string | null): AppointmentsListView {
+  return value === 'billing' ? 'billing' : 'calendar';
+}
 
 export async function GET(request: Request) {
   try {
@@ -12,12 +17,12 @@ export async function GET(request: Request) {
     const date = searchParams.get('date');
     const status = searchParams.get('status');
     const patientId = searchParams.get('patient_id');
+    const view = resolveAppointmentsView(searchParams.get('view'));
 
-    const items = await appointmentService.getByClinic(clinicId, date, status, patientId);
+    const items = await appointmentService.getByClinic(clinicId, date, status, patientId, view);
     return apiOk({ items });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Error interno';
-    return apiError(message, 500);
+    return apiErrorFromUnknown(error, 500, 'api/appointments#get');
   }
 }
 
@@ -35,7 +40,6 @@ export async function POST(request: Request) {
     const created = await appointmentService.create(clinicId, parsed.data);
     return apiOk(created, 201);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Error interno';
-    return apiError(message, 500);
+    return apiErrorFromUnknown(error, 500, 'api/appointments#post');
   }
 }

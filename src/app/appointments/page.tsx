@@ -21,7 +21,6 @@ type ApiPatient = {
   id: string;
   dni: string;
   full_name: string;
-  phone: string;
 };
 
 type ApiTreatment = {
@@ -40,8 +39,8 @@ type ApiAppointment = {
   cost: string | number;
   status: string;
   observations?: string | null;
-  patient?: { id: string; full_name: string; dni: string };
-  doctor?: { id: string; full_name: string | null; email: string | null };
+  patient?: { id: string; full_name: string };
+  doctor?: { id: string; full_name: string | null };
   treatment?: { id: string; name: string; price: string | number };
 };
 
@@ -150,9 +149,9 @@ function AppointmentsContent() {
   const load = async () => {
     try {
       const [patientsData, treatmentsData, appointmentsData] = await Promise.all([
-        apiRequest<{ items: ApiPatient[]; total: number; page: number; limit: number; totalPages: number }>('/api/patients?limit=200'),
+        apiRequest<{ items: ApiPatient[]; total: number; page: number; limit: number; totalPages: number }>('/api/patients?limit=200&view=lookup'),
         apiRequest<{ items: ApiTreatment[] }>('/api/treatments'),
-        apiRequest<{ items: ApiAppointment[] }>('/api/appointments'),
+        apiRequest<{ items: ApiAppointment[] }>('/api/appointments?view=calendar'),
       ]);
 
       setPatients(patientsData.items || []);
@@ -168,7 +167,7 @@ function AppointmentsContent() {
         time: a.time,
         patientName: a.patient?.full_name || 'Paciente',
         treatmentName: a.treatment?.name || 'Tratamiento',
-        doctorName: a.doctor?.full_name || a.doctor?.email || 'Doctor',
+        doctorName: a.doctor?.full_name || 'Doctor',
         cost: Number(a.cost) || 0,
         status: mapStatusToUi(a.status),
       }));
@@ -371,7 +370,6 @@ function AppointmentsContent() {
                             >
                               <div>
                                 <p className="font-bold">{p.full_name}</p>
-                                <p className="text-[10px] text-muted-foreground">Celular: {p.phone}</p>
                               </div>
                               <Badge variant="outline" className="font-mono">
                                 DNI: {p.dni}

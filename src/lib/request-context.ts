@@ -18,7 +18,7 @@ export async function getRequestContext() {
           process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || 'dev-secret'
         );
         clinicId = payload.clinic_id;
-        userId = payload.user_id;
+        userId = payload.sub;
       } catch {
         // Ignorado: el caller respondera con 401.
       }

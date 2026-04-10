@@ -5,7 +5,6 @@ import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import { Card } from '@/components/ui/card';
 import { UserPlus, Search, Eye, Trash2, ShieldAlert } from 'lucide-react';
@@ -20,13 +19,6 @@ type ApiPatient = {
   id: string;
   dni: string;
   full_name: string;
-  first_name?: string | null;
-  last_name?: string | null;
-  email?: string | null;
-  phone: string;
-  address: string;
-  medical_observations?: string | null;
-  created_at?: string;
 };
 
 function splitName(fullName: string) {
@@ -108,7 +100,7 @@ function PatientsContent() {
   const loadData = async () => {
     try {
       const data = await apiRequest<{ items: ApiPatient[]; total: number; page: number; limit: number; totalPages: number }>(
-        '/api/patients?limit=200'
+        '/api/patients?limit=200&view=summary'
       );
       setPatients(data.items || []);
     } catch (error) {
@@ -315,7 +307,7 @@ function PatientsContent() {
             <Search className="absolute left-4 top-3.5 h-5 w-5 text-muted-foreground" />
             <Input
               placeholder="Buscar por DNI o nombre..."
-              className="pl-12 h-12 rounded-2xl bg-slate-50 border-none shadow-inner text-base"
+              className="pl-12 h-12 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border-none shadow-inner text-base"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -323,12 +315,10 @@ function PatientsContent() {
 
           <div className="border rounded-[1.5rem] overflow-hidden">
             <Table>
-              <TableHeader className="bg-slate-50/50">
+              <TableHeader className="bg-slate-50/50 dark:bg-slate-800/80">
                 <TableRow>
                   <TableHead className="font-black uppercase text-[10px] tracking-widest">Documento</TableHead>
                   <TableHead className="font-black uppercase text-[10px] tracking-widest">Paciente</TableHead>
-                  <TableHead className="font-black uppercase text-[10px] tracking-widest">Celular</TableHead>
-                  <TableHead className="font-black uppercase text-[10px] tracking-widest">Correo</TableHead>
                   <TableHead className="text-right font-black uppercase text-[10px] tracking-widest">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -337,16 +327,10 @@ function PatientsContent() {
                   filteredPatients.map((p) => {
                     const nameData = splitName(p.full_name);
                     return (
-                      <TableRow key={p.id} className="group hover:bg-slate-50 transition-colors">
+                      <TableRow key={p.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
                         <TableCell className="font-mono text-xs">{p.dni}</TableCell>
-                        <TableCell className="font-black text-slate-800">
+                        <TableCell className="font-black text-slate-800 dark:text-slate-100">
                           {nameData.lastNames ? `${nameData.lastNames}, ${nameData.names}` : p.full_name}
-                        </TableCell>
-                        <TableCell className="text-sm font-medium">{p.phone}</TableCell>
-                        <TableCell className="text-sm">
-                          <Badge variant="outline" className="bg-primary/5 text-primary border-primary/10">
-                            {p.email || 'Sin correo'}
-                          </Badge>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
@@ -359,7 +343,7 @@ function PatientsContent() {
                               variant="ghost"
                               size="icon"
                               onClick={() => handleDeleteRequest(p.id)}
-                              className="h-9 w-9 text-destructive opacity-0 group-hover:opacity-100 transition-opacity rounded-xl hover:bg-red-50"
+                              className="h-9 w-9 text-destructive opacity-0 group-hover:opacity-100 transition-opacity rounded-xl hover:bg-red-50 dark:hover:bg-red-950/40"
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -370,7 +354,7 @@ function PatientsContent() {
                   })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-24 text-muted-foreground bg-slate-50/30">
+                    <TableCell colSpan={3} className="text-center py-24 text-muted-foreground bg-slate-50/30 dark:bg-slate-800/40">
                       <UserPlus className="w-12 h-12 mx-auto mb-4 opacity-10" />
                       <p className="font-bold uppercase tracking-widest text-xs">No se encontraron registros</p>
                     </TableCell>
@@ -405,7 +389,7 @@ function PatientsContent() {
                 value={confirmWord}
                 onChange={(e) => setConfirmWord(e.target.value)}
                 placeholder="ELIMINAR"
-                className="h-12 rounded-xl bg-slate-50 focus:bg-white transition-all border-none shadow-inner"
+                className="h-12 rounded-xl bg-slate-50 dark:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-700 transition-all border-none shadow-inner"
               />
             </div>
           </div>

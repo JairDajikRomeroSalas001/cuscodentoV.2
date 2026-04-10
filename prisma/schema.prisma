@@ -18,6 +18,7 @@ model Clinic {
   primary_color       String?
   slogan              String?
   theme               String           @default("light")
+  subscription_fee    Decimal          @default(50) @db.Decimal(10, 2)
   subscription_status String           @default("active")
   subscription_tier   String           @default("basic")
   next_payment_date   DateTime?

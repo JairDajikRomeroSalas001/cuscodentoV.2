@@ -1,11 +1,69 @@
 import { prisma } from '@/lib/prisma';
+import type {
+  PatientDetailDTO,
+  PatientFullListDTO,
+  PatientLookupDTO,
+  PatientSummaryDTO,
+  PatientsListView,
+} from '@/types/dto';
+
+const patientSummarySelect = {
+  id: true,
+  dni: true,
+  full_name: true,
+} as const;
+
+const patientFullListSelect = {
+  id: true,
+  clinic_id: true,
+  dni: true,
+  full_name: true,
+  email: true,
+  phone: true,
+  address: true,
+  created_at: true,
+  under_treatment: true,
+  prone_to_bleeding: true,
+  allergic_to_meds: true,
+  medical_observations: true,
+} as const;
+
+const patientDetailSelect = {
+  id: true,
+  clinic_id: true,
+  dni: true,
+  full_name: true,
+  first_name: true,
+  last_name: true,
+  email: true,
+  phone: true,
+  address: true,
+  city: true,
+  state: true,
+  postal_code: true,
+  gender: true,
+  under_treatment: true,
+  prone_to_bleeding: true,
+  allergic_to_meds: true,
+  medical_observations: true,
+  created_at: true,
+  updated_at: true,
+} as const;
+
+function resolveListSelect(view: PatientsListView) {
+  if (view === 'full') return patientFullListSelect;
+  return patientSummarySelect;
+}
 
 export const patientService = {
-  async getByClinic(clinicId: string, page = 1, limit = 20) {
+  async getByClinic(clinicId: string, page = 1, limit = 20, view: PatientsListView = 'summary') {
     const skip = (page - 1) * limit;
+    const select = resolveListSelect(view);
+
     const [items, total] = await Promise.all([
       prisma.patient.findMany({
         where: { clinic_id: clinicId },
+        select,
         orderBy: { created_at: 'desc' },
         skip,
         take: limit,
@@ -19,11 +77,20 @@ export const patientService = {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+    } as {
+      items: PatientSummaryDTO[] | PatientFullListDTO[];
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
     };
   },
 
   async getById(clinicId: string, patientId: string) {
-    return prisma.patient.findFirst({ where: { id: patientId, clinic_id: clinicId } });
+    return prisma.patient.findFirst({
+      where: { id: patientId, clinic_id: clinicId },
+      select: patientDetailSelect,
+    }) as Promise<PatientDetailDTO | null>;
   },
 
   async create(clinicId: string, data: {
@@ -114,8 +181,9 @@ export const patientService = {
           { full_name: { contains: query } },
         ],
       },
+      select: patientSummarySelect,
       orderBy: { created_at: 'desc' },
       take: 50,
-    });
+    }) as Promise<PatientLookupDTO[]>;
   },
 };

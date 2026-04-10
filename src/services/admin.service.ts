@@ -22,6 +22,7 @@ type SaveUserInput = {
   address?: string;
   colegiatura?: string;
   role?: AdminUserRole;
+  subscriptionFee?: number;
   subscriptionStatus?: SubscriptionStatus;
   nextPaymentDate?: string;
   contractStartDate?: string;
@@ -42,6 +43,12 @@ function parseDate(value?: string): Date | undefined {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return undefined;
   return parsed;
+}
+
+function addMonthsSafe(base: Date, months: number): Date {
+  const date = new Date(base);
+  date.setMonth(date.getMonth() + Math.max(1, months));
+  return date;
 }
 
 function toDateOnly(value?: Date | null): string | undefined {
@@ -68,6 +75,22 @@ function clean(value?: string): string | undefined {
   if (!value) return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizeUserPhotoUrl(value?: string): string | undefined {
+  const cleaned = clean(value);
+  if (!cleaned) return undefined;
+
+  // User.photo_url is a short varchar. Avoid storing data URLs/base64 blobs there.
+  if (cleaned.startsWith('data:')) return undefined;
+  if (cleaned.length > 191) return undefined;
+
+  return cleaned;
+}
+
+function normalizeSubscriptionFee(value?: number): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) return DEFAULT_SUBSCRIPTION_FEE;
+  return Math.max(0, Number(value));
 }
 
 function slugify(input: string): string {
@@ -105,6 +128,7 @@ function mapClinicToAdminUser(clinic: {
   name: string;
   address: string | null;
   logo_url: string | null;
+  subscription_fee: number | { toString(): string };
   subscription_status: string;
   next_payment_date: Date | null;
   contract_start_date: Date | null;
@@ -131,7 +155,7 @@ function mapClinicToAdminUser(clinic: {
     colegiatura: owner?.colegiatura ?? undefined,
     photo: clinic.logo_url ?? owner?.photo_url ?? undefined,
     status: owner?.status === 'inactive' ? 'inactive' : 'active',
-    subscriptionFee: DEFAULT_SUBSCRIPTION_FEE,
+    subscriptionFee: Number(clinic.subscription_fee ?? DEFAULT_SUBSCRIPTION_FEE),
     subscriptionStatus: normalizeStatus(clinic.subscription_status),
     nextPaymentDate: toDateOnly(clinic.next_payment_date),
     contractStartDate: toDateOnly(clinic.contract_start_date),
@@ -268,7 +292,8 @@ export const adminService = {
       const domain = await uniqueDomain(username || fullName);
       const createdBy = actor.username ?? actor.email ?? actor.id;
       const contractStartDate = parseDate(input.contractStartDate);
-      const nextPaymentDate = parseDate(input.nextPaymentDate);
+      const nextPaymentDate = parseDate(input.nextPaymentDate) ?? (contractStartDate ? addMonthsSafe(contractStartDate, 1) : undefined);
+      const subscriptionFee = normalizeSubscriptionFee(input.subscriptionFee);
       const passwordHash = await hashPassword(password);
 
       const created = await prisma.$transaction(async (tx) => {
@@ -279,6 +304,7 @@ export const adminService = {
             address: clean(input.address),
             logo_url: clean(input.photo),
             created_by: createdBy,
+            subscription_fee: subscriptionFee,
             subscription_status: input.subscriptionStatus ?? 'active',
             contract_start_date: contractStartDate,
             next_payment_date: nextPaymentDate,
@@ -309,7 +335,7 @@ export const adminService = {
             full_name: fullName,
             dni: clean(input.dni),
             address: clean(input.address),
-            photo_url: clean(input.photo),
+            photo_url: normalizeUserPhotoUrl(input.photo),
             status: 'active',
           },
         });
@@ -402,6 +428,9 @@ export const adminService = {
 
       const parsedNextDate = parseDate(input.nextPaymentDate);
       const parsedContractStart = parseDate(input.contractStartDate);
+      const resolvedNextPaymentDate = parsedNextDate ?? (parsedContractStart ? addMonthsSafe(parsedContractStart, 1) : undefined);
+      const resolvedSubscriptionFee =
+        typeof input.subscriptionFee === 'number' ? normalizeSubscriptionFee(input.subscriptionFee) : clinic.subscription_fee;
       const updatedBy = actor.username ?? actor.email ?? actor.id;
 
       await prisma.clinic.update({
@@ -410,8 +439,9 @@ export const adminService = {
           name: clean(input.fullName) ?? clinic.name,
           address: clean(input.address) ?? clinic.address,
           logo_url: clean(input.photo) ?? clinic.logo_url,
+          subscription_fee: resolvedSubscriptionFee,
           subscription_status: input.subscriptionStatus ?? clinic.subscription_status,
-          next_payment_date: parsedNextDate ?? clinic.next_payment_date,
+          next_payment_date: resolvedNextPaymentDate ?? clinic.next_payment_date,
           contract_start_date: parsedContractStart ?? clinic.contract_start_date,
           created_by: clinic.created_by ?? updatedBy,
         },
@@ -437,7 +467,7 @@ export const adminService = {
             full_name: clean(input.fullName),
             dni: clean(input.dni),
             address: clean(input.address),
-            photo_url: clean(input.photo),
+            photo_url: normalizeUserPhotoUrl(input.photo),
             status: 'active',
           },
         });
@@ -453,7 +483,7 @@ export const adminService = {
             full_name: clean(input.fullName) ?? clinic.name,
             dni: clean(input.dni),
             address: clean(input.address),
-            photo_url: clean(input.photo),
+            photo_url: normalizeUserPhotoUrl(input.photo),
             status: 'active',
           },
         });
@@ -508,7 +538,7 @@ export const adminService = {
           dni: clean(input.dni),
           address: clean(input.address),
           colegiatura: clean(input.colegiatura),
-          photo_url: clean(input.photo),
+          photo_url: normalizeUserPhotoUrl(input.photo),
         },
         select: {
           id: true,
@@ -566,6 +596,7 @@ export const adminService = {
       select: {
         id: true,
         name: true,
+        subscription_fee: true,
         updated_at: true,
         subscription_status: true,
         next_payment_date: true,
@@ -576,7 +607,7 @@ export const adminService = {
       id: `sub-${clinic.id}-${clinic.updated_at.getTime()}`,
       clinicId: clinic.id,
       clinicName: clinic.name,
-      amount: DEFAULT_SUBSCRIPTION_FEE,
+      amount: Number(clinic.subscription_fee ?? DEFAULT_SUBSCRIPTION_FEE),
       date: toDateOnly(clinic.updated_at) ?? toDateOnly(new Date())!,
       status: clinic.subscription_status === 'active' ? 'paid' : 'pending',
       concept: clinic.next_payment_date
@@ -591,13 +622,14 @@ export const adminService = {
 
     const clinic = await prisma.clinic.findUnique({
       where: { id: input.clinicId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, subscription_fee: true },
     });
 
     if (!clinic) throw new Error('Consultorio no encontrado');
 
     const installments = Math.max(1, input.installments ?? 1);
-    const amount = input.amount && input.amount > 0 ? input.amount : DEFAULT_SUBSCRIPTION_FEE * installments;
+    const baseFee = Number(clinic.subscription_fee ?? DEFAULT_SUBSCRIPTION_FEE);
+    const amount = input.amount && input.amount > 0 ? input.amount : baseFee * installments;
     const nextPaymentDate = parseDate(input.nextPaymentDate);
 
     await prisma.clinic.update({
