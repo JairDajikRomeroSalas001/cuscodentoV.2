@@ -259,7 +259,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
       );
 
       // No existen endpoints REST para estos modulos en la version actual.
-      setRadiographs([]);
+      // Cargar radiografías filtrando por paciente
+      const radiographsApi = await db.getAll<Radiograph>('radiographs', id);
+      setRadiographs(radiographsApi);
       setConsents([]);
       setOdontograms(
         (odontogramsApi.items || [])
@@ -284,32 +286,70 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     }
   };
 
+  // Nuevo flujo: subir imagen a /api/upload y luego guardar en /api/radiographs
+  const uploadImage = async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('No se pudo subir la imagen');
+    }
+    return await response.json(); // { url, name, size, type }
+  };
+
+  const saveRadiograph = async (data: {
+    patient_id: string;
+    appointment_id?: string;
+    file_url: string;
+    file_name: string;
+    file_size: number;
+    mime_type?: string;
+    type?: string;
+    notes?: string;
+  }) => {
+    const response = await fetch('/api/radiographs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'No se pudo guardar la radiografía');
+    }
+    return await response.json();
+  };
+
   const handleFileUpload = async (type: 'radiograph' | 'consent', e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    const data: any = {
-      id: crypto.randomUUID(),
-      patientId: id,
-      fileName: file.name,
-      fileType: file.type,
-      fileBlob: file, 
-      date: new Date().toLocaleDateString('es-PE'),
-    };
-
-    const store = type === 'radiograph' ? 'radiographs' : 'consents';
     try {
-      await db.put(store, data);
-      toast({ title: "Archivo subido", description: "El documento se guardo correctamente." });
+      // 1. Subir imagen
+      const uploadResult = await uploadImage(file);
+      // 2. Guardar registro en la base de datos
+      if (type === 'radiograph') {
+        await saveRadiograph({
+          patient_id: id,
+          file_url: uploadResult.url,
+          file_name: uploadResult.name,
+          file_size: uploadResult.size,
+          mime_type: uploadResult.type,
+        });
+      }
+      toast({ title: "Archivo subido", description: "El documento se guardó correctamente." });
       loadAll();
     } catch (error) {
       toast({
-        title: 'Modulo en migracion',
-        description: error instanceof Error ? error.message : 'Aun no se pudo guardar este archivo.',
+        title: 'Error al subir archivo',
+        description: error instanceof Error ? error.message : 'No se pudo guardar la imagen.',
         variant: 'destructive',
       });
     }
-    e.target.value = ''; 
+    e.target.value = '';
   };
 
   const downloadFile = (fileBlob: Blob, fileName: string) => {
@@ -321,9 +361,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     URL.revokeObjectURL(url);
   };
 
-  const openPreview = (fileBlob: Blob, fileType: string) => {
-    const url = URL.createObjectURL(fileBlob);
-    setPreviewData({ url, type: fileType });
+  const openPreview = (fileUrl: string, fileType: string) => {
+    setPreviewData({ url: fileUrl, type: fileType });
   };
 
   const deleteFile = async (store: 'radiographs' | 'consents', fileId: string) => {
@@ -504,12 +543,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
                    {radiographs.map(r => (
                      <Card key={r.id} className="overflow-hidden group relative border-none shadow-sm hover:shadow-md transition-all">
-                       <div className="aspect-square bg-slate-100 flex items-center justify-center overflow-hidden cursor-pointer" onClick={() => openPreview(r.fileBlob, r.fileType)}>
+                       <div className="aspect-square bg-slate-100 flex items-center justify-center overflow-hidden cursor-pointer" onClick={() => openPreview(r.fileUrl || r.file_url, r.fileType)}>
                           <img 
-                            src={URL.createObjectURL(r.fileBlob)} 
+                            src={r.fileUrl || r.file_url} 
                             className="w-full h-full object-cover transition-transform group-hover:scale-105" 
                             alt={r.fileName}
-                            onLoad={(e) => URL.revokeObjectURL((e.target as any).src)}
                           />
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                             <ZoomIn className="text-white w-8 h-8" />

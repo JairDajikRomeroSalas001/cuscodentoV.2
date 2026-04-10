@@ -264,7 +264,7 @@ export interface PaymentMethod {
 }
 
 export const db = {
-  async getAll<T = unknown>(table: string): Promise<T[]> {
+  async getAll<T = unknown>(table: string, patientId?: string): Promise<T[]> {
     try {
       if (table === 'payments') {
         const data = await apiGet<{ items?: Array<{
@@ -455,6 +455,7 @@ export const db = {
       }
 
       if (table === 'radiographs') {
+        const url = patientId ? `/api/radiographs?patient_id=${patientId}` : '/api/radiographs';
         const data = await apiGet<{ items?: Array<{
           id: string;
           patient_id: string;
@@ -465,7 +466,7 @@ export const db = {
           type?: string | null;
           created_at: string;
           clinic_id: string;
-        }> }>('/api/radiographs');
+        }> }>(url);
 
         const items = (data.items || []).map((item) => ({
           id: item.id,
@@ -475,7 +476,6 @@ export const db = {
           type: item.type || undefined,
           clinicId: item.clinic_id,
           date: toDate(item.created_at),
-          fileBlob: dataUrlToBlob(item.file_url, item.mime_type || 'image/*'),
           fileType: item.mime_type || 'image/*',
           fileName: item.file_name,
         }));
