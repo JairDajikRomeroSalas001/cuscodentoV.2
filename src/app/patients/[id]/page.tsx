@@ -148,7 +148,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [odontograms, setOdontograms] = useState<Odontogram[]>([]);
   
-  const [previewData, setPreviewData] = useState<{ url: string; type: string } | null>(null);
+  const [previewData, setPreviewData] = useState<{ url: string; type: string; isObjectUrl?: boolean } | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', notes: '' });
@@ -361,8 +361,31 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     URL.revokeObjectURL(url);
   };
 
-  const openPreview = (fileUrl: string, fileType: string) => {
-    setPreviewData({ url: fileUrl, type: fileType });
+  const closePreview = () => {
+    setPreviewData((prev) => {
+      if (prev?.isObjectUrl) {
+        URL.revokeObjectURL(prev.url);
+      }
+      return null;
+    });
+  };
+
+  const openPreview = (file: string | Blob, fileType: string) => {
+    setPreviewData((prev) => {
+      if (prev?.isObjectUrl) {
+        URL.revokeObjectURL(prev.url);
+      }
+
+      if (typeof file === 'string') {
+        return { url: file, type: fileType };
+      }
+
+      return {
+        url: URL.createObjectURL(file),
+        type: fileType,
+        isObjectUrl: true,
+      };
+    });
   };
 
   const deleteFile = async (store: 'radiographs' | 'consents', fileId: string) => {
@@ -543,9 +566,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
                    {radiographs.map(r => (
                      <Card key={r.id} className="overflow-hidden group relative border-none shadow-sm hover:shadow-md transition-all">
-                       <div className="aspect-square bg-slate-100 flex items-center justify-center overflow-hidden cursor-pointer" onClick={() => openPreview(r.fileUrl || r.file_url, r.fileType)}>
+                       <div className="aspect-square bg-slate-100 flex items-center justify-center overflow-hidden cursor-pointer" onClick={() => openPreview(r.fileUrl, r.fileType)}>
                           <img 
-                            src={r.fileUrl || r.file_url} 
+                            src={r.fileUrl} 
                             className="w-full h-full object-cover transition-transform group-hover:scale-105" 
                             alt={r.fileName}
                           />
@@ -747,11 +770,13 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
         </div>
 
         {/* Modal de Zoom General y PDF Preview */}
-        <Dialog open={!!previewData} onOpenChange={() => setPreviewData(null)}>
+        <Dialog open={!!previewData} onOpenChange={(open) => {
+          if (!open) closePreview();
+        }}>
            <DialogContent className="max-w-[95vw] h-[95vh] flex flex-col p-0 bg-black/95 border-none">
               <div className="flex justify-between items-center p-4 bg-black/40 text-white z-50">
                 <span className="text-sm font-medium">Previsualización de Documento</span>
-                <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" onClick={() => setPreviewData(null)}>
+                <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" onClick={closePreview}>
                   <X className="w-6 h-6" />
                 </Button>
               </div>

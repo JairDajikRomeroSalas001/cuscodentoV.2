@@ -573,7 +573,9 @@ export const db = {
       data: {},
     });
   },
-  async importData(_data: unknown): Promise<void> {},
+  async importData(data: unknown): Promise<void> {
+    void data;
+  },
   put: async (tableOrData: string | unknown, maybeData?: unknown): Promise<null> => {
     const table = typeof tableOrData === 'string' ? tableOrData : undefined;
     const payload = (typeof tableOrData === 'string' ? maybeData : tableOrData) as Record<string, unknown> | undefined;
