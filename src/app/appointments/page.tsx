@@ -113,15 +113,7 @@ function AppointmentsContent() {
   const [filterType, setFilterType] = useState<'all' | 'today' | 'week' | 'specific'>('all');
   const [specificDate, setSpecificDate] = useState('');
 
-  const doctorOptions = useMemo(
-    () => [
-      {
-        id: currentUser?.id || '',
-        label: currentUser?.fullName || currentUser?.full_name || currentUser?.email || 'Odontologo',
-      },
-    ],
-    [currentUser?.id, currentUser?.fullName, currentUser?.full_name, currentUser?.email]
-  );
+  const [staffList, setStaffList] = useState<Array<{ id: string; label: string }>>([]);
 
   const [form, setForm] = useState({
     patientId: '',
@@ -138,6 +130,7 @@ function AppointmentsContent() {
   useEffect(() => {
     if (currentUser) {
       load();
+      // inicialmente, dejaremos doctorId en blanco; se establecerá cuando carguemos staff
       setForm((prev) => ({ ...prev, doctorId: currentUser.id }));
     }
   }, [currentUser?.id]);
@@ -148,10 +141,11 @@ function AppointmentsContent() {
 
   const load = async () => {
     try {
-      const [patientsData, treatmentsData, appointmentsData] = await Promise.all([
+      const [patientsData, treatmentsData, appointmentsData, staffData] = await Promise.all([
         apiRequest<{ items: ApiPatient[]; total: number; page: number; limit: number; totalPages: number }>('/api/patients?limit=200&view=lookup'),
         apiRequest<{ items: ApiTreatment[] }>('/api/treatments'),
         apiRequest<{ items: ApiAppointment[] }>('/api/appointments?view=calendar'),
+        apiRequest<{ items: Array<{ id: string; fullName?: string; username?: string; role?: string }> }>('/api/admin/users'),
       ]);
 
       setPatients(patientsData.items || []);
@@ -173,6 +167,16 @@ function AppointmentsContent() {
       }));
 
       setRawAppointments(mapped);
+
+      // Mapear staff para el select de medicos
+      const staffItems = (staffData.items || [])
+        .filter((u) => u && u.id)
+        .map((u) => ({ id: u.id, label: u.fullName || u.username || 'Medico' }));
+
+      setStaffList(staffItems);
+
+      // Si el formulario no tiene doctor asignado, establecer el primero disponible
+      setForm((prev) => ({ ...prev, doctorId: prev.doctorId || staffItems[0]?.id || prev.doctorId }));
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -406,7 +410,7 @@ function AppointmentsContent() {
                         <SelectValue placeholder="Seleccione Doctor" />
                       </SelectTrigger>
                       <SelectContent>
-                        {doctorOptions.map((u) => (
+                        {(staffList.length > 0 ? staffList : [{ id: currentUser?.id || '', label: currentUser?.fullName || currentUser?.full_name || currentUser?.email || 'Odontologo' }]).map((u) => (
                           <SelectItem key={u.id} value={u.id}>
                             {u.label}
                           </SelectItem>

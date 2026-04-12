@@ -82,6 +82,7 @@ export const appointmentService = {
     time: string;
     cost: number;
     status?: string;
+    observations?: string | null;
   }) {
     return prisma.appointment.create({
       data: {
@@ -91,6 +92,7 @@ export const appointmentService = {
         treatment_id: data.treatment_id,
         date: data.date,
         time: data.time,
+        observations: data.observations ?? undefined,
         cost: new Prisma.Decimal(data.cost),
         status: data.status || 'scheduled',
       },

@@ -46,6 +46,7 @@ const patientDetailSelect = {
   prone_to_bleeding: true,
   allergic_to_meds: true,
   medical_observations: true,
+  registered_by: true,
   created_at: true,
   updated_at: true,
 } as const;
@@ -131,6 +132,7 @@ export const patientService = {
         postal_code: data.postal_code,
         gender: data.gender,
         medical_observations: data.medical_observations,
+        registered_by: typeof (data as any).registered_by === 'string' ? (data as any).registered_by : undefined,
       },
     });
   },
@@ -158,6 +160,7 @@ export const patientService = {
           typeof data.medical_observations === 'string'
             ? data.medical_observations
             : current.medical_observations,
+        registered_by: typeof data.registered_by === 'string' ? data.registered_by : current.registered_by,
       },
     });
   },

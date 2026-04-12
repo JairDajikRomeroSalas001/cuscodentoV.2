@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation } from '@/hooks/use-mutation';
-import { Lock, ShieldCheck, User as UserIcon, QrCode, Building2, Plus, Trash2, Camera, Wallet, Palette, Sun, Moon, Laptop, Sparkles, Type } from 'lucide-react';
+import { Lock, ShieldCheck, User as UserIcon, QrCode, Building2, Plus, Trash2, Camera, Wallet, Palette, Sun, Moon, Laptop, Sparkles, Type, Eye, EyeOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -46,6 +46,9 @@ function ProfileContent() {
   const { toast } = useToast();
   const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
   const [isChanging, setIsChanging] = useState(false);
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [isSavingAppearance, setIsSavingAppearance] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [isMethodOpen, setIsMethodOpen] = useState(false);
@@ -94,8 +97,22 @@ function ProfileContent() {
     }
     setIsChanging(true);
     try {
-      toast({ title: 'Pendiente de API', description: 'El cambio de contraseña se habilitará con el endpoint de perfil.' });
-      setTimeout(() => logout(), 2000);
+      const resp = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ current_password: passwords.current, new_password: passwords.new, confirm_password: passwords.confirm }),
+      });
+
+      const body = await resp.json().catch(() => ({}));
+
+      if (!resp.ok) {
+        toast({ variant: 'destructive', title: 'Error', description: (body && (body.error || body.message)) || 'No se pudo actualizar la contraseña.' });
+        return;
+      }
+
+      toast({ title: 'Contraseña actualizada', description: 'La contraseña se ha actualizado. Se cerrará la sesión.' });
+      setTimeout(() => logout(), 1200);
     } catch (error) {
       toast({ variant: 'destructive', title: 'Error', description: 'No se pudo actualizar la contraseña.' });
     } finally {
@@ -216,9 +233,33 @@ function ProfileContent() {
                 <CardHeader><CardTitle className="text-lg flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-primary" /> Cambiar Contraseña</CardTitle></CardHeader>
                 <form onSubmit={handleChangePassword}>
                   <CardContent className="space-y-4">
-                    <div className="space-y-2"><Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Contraseña Actual</Label><Input type="password" value={passwords.current} onChange={e => setPasswords({...passwords, current: e.target.value})} required className="rounded-xl h-12 bg-slate-50 dark:bg-slate-900" /></div>
-                    <div className="space-y-2"><Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Nueva Contraseña</Label><Input type="password" value={passwords.new} onChange={e => setPasswords({...passwords, new: e.target.value})} required className="rounded-xl h-12 bg-slate-50 dark:bg-slate-900" /></div>
-                    <div className="space-y-2"><Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Confirmar Nueva Contraseña</Label><Input type="password" value={passwords.confirm} onChange={e => setPasswords({...passwords, confirm: e.target.value})} required className="rounded-xl h-12 bg-slate-50 dark:bg-slate-900" /></div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Contraseña Actual</Label>
+                      <div className="relative">
+                        <Input type={showCurrent ? 'text' : 'password'} value={passwords.current} onChange={e => setPasswords({...passwords, current: e.target.value})} required className="rounded-xl h-12 bg-slate-50 dark:bg-slate-900 pr-12" />
+                        <button type="button" onClick={() => setShowCurrent(prev => !prev)} aria-label={showCurrent ? 'Ocultar contraseña actual' : 'Mostrar contraseña actual'} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">
+                          {showCurrent ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Nueva Contraseña</Label>
+                      <div className="relative">
+                        <Input type={showNew ? 'text' : 'password'} value={passwords.new} onChange={e => setPasswords({...passwords, new: e.target.value})} required className="rounded-xl h-12 bg-slate-50 dark:bg-slate-900 pr-12" />
+                        <button type="button" onClick={() => setShowNew(prev => !prev)} aria-label={showNew ? 'Ocultar nueva contraseña' : 'Mostrar nueva contraseña'} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">
+                          {showNew ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Confirmar Nueva Contraseña</Label>
+                      <div className="relative">
+                        <Input type={showConfirm ? 'text' : 'password'} value={passwords.confirm} onChange={e => setPasswords({...passwords, confirm: e.target.value})} required className="rounded-xl h-12 bg-slate-50 dark:bg-slate-900 pr-12" />
+                        <button type="button" onClick={() => setShowConfirm(prev => !prev)} aria-label={showConfirm ? 'Ocultar confirmar contraseña' : 'Mostrar confirmar contraseña'} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">
+                          {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                      </div>
+                    </div>
                   </CardContent>
                   <CardFooter><Button type="submit" className="w-full h-14 text-lg font-black rounded-2xl shadow-xl shadow-primary/20" disabled={isChanging}>{isChanging ? 'Procesando...' : 'Guardar Nueva Contraseña'}</Button></CardFooter>
                 </form>

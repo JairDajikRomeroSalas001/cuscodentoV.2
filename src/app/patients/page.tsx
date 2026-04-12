@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import { Card } from '@/components/ui/card';
-import { UserPlus, Search, Eye, Trash2, ShieldAlert } from 'lucide-react';
+import { UserPlus, Search, Eye, Trash2, ShieldAlert, Edit2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -65,11 +65,13 @@ function PatientsContent() {
   const [patients, setPatients] = useState<ApiPatient[]>([]);
   const [search, setSearch] = useState('');
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
+  const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState<string | null>(null);
   const [confirmWord, setConfirmWord] = useState('');
 
   const [newPatient, setNewPatient] = useState({
+    id: undefined as string | undefined,
     dni: '',
     names: '',
     lastNames: '',
@@ -81,19 +83,35 @@ function PatientsContent() {
     attendedBy: '',
   });
 
-  const userOptions = useMemo(
-    () => [
-      {
-        id: user?.id || 'self',
-        label: user?.fullName || user?.full_name || user?.email || 'Odontologo',
-      },
-    ],
-    [user?.id, user?.fullName, user?.full_name, user?.email]
-  );
+  const [staffOptions, setStaffOptions] = useState<Array<{ id: string; label: string }>>([]);
 
   useEffect(() => {
     if (user) {
       loadData();
+
+      const loadStaff = async () => {
+        try {
+          const data = await apiRequest<{ items: Array<{ id: string; fullName?: string; username?: string; role?: string }> }>('/api/admin/users');
+          const items = (data && (data as any).items) || [];
+          const options = (items as any[])
+            .filter((i) => i && i.role !== 'clinic')
+            .map((i) => ({ id: i.id, label: i.fullName || i.username || i.id }));
+
+          if (options.length === 0) {
+            setStaffOptions([
+              { id: user?.id || 'self', label: user?.fullName || user?.full_name || user?.email || 'Odontologo' },
+            ]);
+          } else {
+            setStaffOptions(options);
+          }
+        } catch (err) {
+          setStaffOptions([
+            { id: user?.id || 'self', label: user?.fullName || user?.full_name || user?.email || 'Odontologo' },
+          ]);
+        }
+      };
+
+      void loadStaff();
     }
   }, [user]);
 
@@ -119,24 +137,45 @@ function PatientsContent() {
     const fullName = `${newPatient.names} ${newPatient.lastNames}`.trim();
 
     try {
-      await apiRequest('/api/patients', {
-        method: 'POST',
-        body: JSON.stringify({
-          dni: dniFinal,
-          full_name: fullName,
-          first_name: newPatient.names || undefined,
-          last_name: newPatient.lastNames || undefined,
-          phone: newPatient.phone,
-          address: newPatient.address,
-          email: newPatient.email || undefined,
-          medical_observations: [newPatient.consultationReason, newPatient.medicalObservations]
-            .filter(Boolean)
-            .join(' | ') || undefined,
-        }),
-      });
+      if (editingPatientId) {
+        await apiRequest(`/api/patients/${editingPatientId}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            dni: dniFinal,
+            full_name: fullName,
+            first_name: newPatient.names || undefined,
+            last_name: newPatient.lastNames || undefined,
+            phone: newPatient.phone,
+            address: newPatient.address,
+            email: newPatient.email || undefined,
+            registered_by: newPatient.attendedBy || undefined,
+            medical_observations: [newPatient.consultationReason, newPatient.medicalObservations]
+              .filter(Boolean)
+              .join(' | ') || undefined,
+          }),
+        });
+      } else {
+        await apiRequest('/api/patients', {
+          method: 'POST',
+          body: JSON.stringify({
+            dni: dniFinal,
+            full_name: fullName,
+            first_name: newPatient.names || undefined,
+            last_name: newPatient.lastNames || undefined,
+            phone: newPatient.phone,
+            address: newPatient.address,
+            email: newPatient.email || undefined,
+            registered_by: newPatient.attendedBy || undefined,
+            medical_observations: [newPatient.consultationReason, newPatient.medicalObservations]
+              .filter(Boolean)
+              .join(' | ') || undefined,
+          }),
+        });
+      }
 
       setIsRegisterOpen(false);
       resetForm();
+      setEditingPatientId(null);
       toast({ title: 'Paciente registrado', description: 'La historia clinica fue creada con exito.' });
       loadData();
     } catch (error) {
@@ -150,6 +189,7 @@ function PatientsContent() {
 
   const resetForm = () => {
     setNewPatient({
+      id: undefined,
       dni: '',
       names: '',
       lastNames: '',
@@ -160,6 +200,29 @@ function PatientsContent() {
       medicalObservations: '',
       attendedBy: '',
     });
+  };
+
+  const openEditModal = async (patientId: string) => {
+    try {
+      const data = await apiRequest<any>(`/api/patients/${patientId}`);
+      // Map returned patient into form
+      setNewPatient({
+        id: data.id,
+        dni: data.dni || '',
+        names: data.first_name || '',
+        lastNames: data.last_name || '',
+        email: data.email || '',
+        phone: data.phone || '',
+        address: data.address || '',
+        consultationReason: (data.medical_observations || '').split('|')[0]?.trim() || '',
+        medicalObservations: (data.medical_observations || '').split('|').slice(1).join(' | ').trim() || '',
+        attendedBy: data.registered_by || '',
+      });
+      setEditingPatientId(patientId);
+      setIsRegisterOpen(true);
+    } catch (err) {
+      toast({ variant: 'destructive', title: 'No se pudo cargar paciente', description: (err as Error).message || 'Error' });
+    }
   };
 
   const handleDeleteRequest = (id: string) => {
@@ -276,13 +339,13 @@ function PatientsContent() {
                     </div>
                     <div className="space-y-2">
                       <Label className="font-bold text-xs uppercase tracking-widest text-muted-foreground">Medico tratante</Label>
-                      <Select onValueChange={(v) => setNewPatient({ ...newPatient, attendedBy: v })}>
+                      <Select value={newPatient.attendedBy} onValueChange={(v) => setNewPatient({ ...newPatient, attendedBy: v })}>
                         <SelectTrigger className="h-11 rounded-xl">
                           <SelectValue placeholder="Seleccione Odontologo" />
                         </SelectTrigger>
                         <SelectContent>
-                          {userOptions.map((u) => (
-                            <SelectItem key={u.id} value={u.label}>
+                          {staffOptions.map((u) => (
+                            <SelectItem key={u.id} value={u.id}>
                               {u.label}
                             </SelectItem>
                           ))}
@@ -334,6 +397,9 @@ function PatientsContent() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
+                            <Button onClick={() => openEditModal(p.id)} variant="outline" size="sm" className="gap-2 h-9 rounded-xl font-bold">
+                              <Edit2 className="w-4 h-4" /> Editar
+                            </Button>
                             <Button asChild variant="secondary" size="sm" className="gap-2 h-9 rounded-xl font-bold">
                               <Link href={`/patients/${p.id}`}>
                                 <Eye className="w-4 h-4" /> Ver Historial
