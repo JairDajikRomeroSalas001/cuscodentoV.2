@@ -1,33 +1,30 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { db, User } from '@/lib/db';
+import { useApi } from '@/hooks/use-api';
+import type { AdminUser } from '@/types/admin';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Search, CreditCard, Calendar, Clock, CheckCircle2, AlertTriangle, ShieldCheck, Activity } from 'lucide-react';
+import { Search, AlertTriangle, ShieldCheck, Activity } from 'lucide-react';
 import { format, isAfter, parseISO, addDays } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 function SubscriptionsContent() {
   const { user: currentUser } = useAuth();
-  const [clinics, setClinics] = useState<User[]>([]);
   const [search, setSearch] = useState('');
+  const { data, loading, error } = useApi<{ items: AdminUser[] }>('/api/admin/users');
 
-  useEffect(() => {
-    load();
-  }, []);
+  const clinics = useMemo(() => {
+    const items = data?.items ?? [];
+    return items.filter((u) => u.role === 'clinic');
+  }, [data]);
 
-  const load = async () => {
-    const allUsers = await db.getAll<User>('users');
-    setClinics(allUsers.filter(u => u.role === 'clinic'));
-  };
-
-  const getStatus = (clinic: User) => {
+  const getStatus = (clinic: AdminUser) => {
     if (clinic.subscriptionStatus === 'blocked') return 'blocked';
     if (clinic.subscriptionStatus === 'suspended') return 'suspended';
     if (!clinic.nextPaymentDate) return 'pending';
@@ -46,6 +43,22 @@ function SubscriptionsContent() {
   );
 
   if (currentUser?.role !== 'admin') return null;
+
+  if (loading) {
+    return (
+      <AppLayout>
+        <div className="py-20 text-center text-sm font-semibold text-muted-foreground">Cargando suscripciones...</div>
+      </AppLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <AppLayout>
+        <div className="py-20 text-center text-sm font-semibold text-destructive">{error}</div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>

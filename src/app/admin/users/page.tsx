@@ -1,15 +1,17 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { db, User, UserRole } from '@/lib/db';
+import { useApi } from '@/hooks/use-api';
+import { useMutation } from '@/hooks/use-mutation';
+import type { AdminUser, AdminUserRole, SubscriptionPayment } from '@/types/admin';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Shield, Trash2, UserPlus, Camera, MapPin, User as UserIcon, Building2, Stethoscope, Briefcase, Edit2, CreditCard, Calendar, ShieldAlert, Search, Loader2, CheckCircle2 } from 'lucide-react';
+import { Shield, ShieldCheck, Trash2, UserPlus, Camera, MapPin, User as UserIcon, Building2, Stethoscope, Briefcase, Edit2, CreditCard, Calendar, ShieldAlert, Search, Loader2, CheckCircle2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -18,14 +20,59 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { addMonths, format, parseISO, isValid } from 'date-fns';
 
+type SaveUserPayload = {
+  id?: string;
+  username?: string;
+  password?: string;
+  fullName?: string;
+  dni?: string;
+  address?: string;
+  colegiatura?: string;
+  role?: AdminUserRole;
+  subscriptionFee?: number;
+  subscriptionStatus?: 'active' | 'suspended' | 'blocked';
+  nextPaymentDate?: string;
+  contractStartDate?: string;
+  paymentFrequency?: 'monthly' | 'yearly';
+  photo?: string;
+};
+
 function UsersContent() {
+  const fieldClassName = "h-12 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-inner font-bold text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400";
+  const strongFieldClassName = "h-12 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-inner text-lg font-black text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400";
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
-  const [users, setUsers] = useState<User[]>([]);
+  const {
+    data: usersData,
+    loading: usersLoading,
+    error: usersError,
+    refetch,
+  } = useApi<{ items: AdminUser[] }>('/api/admin/users');
+
+  const createUserMutation = useMutation<AdminUser, SaveUserPayload>('/api/admin/users', 'POST');
+  const updateUserMutation = useMutation<AdminUser, SaveUserPayload>('/api/admin/users', 'PUT');
+  const deleteUserMutation = useMutation<{ ok: true }, { id: string }>('/api/admin/users', 'DELETE');
+  const registerInitialPaymentMutation = useMutation<
+    SubscriptionPayment,
+    { clinicId: string; amount: number; installments: number; nextPaymentDate: string; concept: string }
+  >('/api/admin/subscription-payments', 'POST');
+
+  const users = usersData?.items ?? [];
   const [isOpen, setIsOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [uploadedPhotoUrl, setUploadedPhotoUrl] = useState<string | null>(null);
   const [isValidatingDni, setIsValidatingDni] = useState(false);
+  const [isBillingScheduleDirty, setIsBillingScheduleDirty] = useState(false);
+  const todayDate = new Date().toISOString().split('T')[0];
+
+  const calculateNextPaymentDate = (contractStartDate: string, installmentsValue: string) => {
+    if (!contractStartDate) return '';
+    const start = parseISO(contractStartDate);
+    if (!isValid(start)) return '';
+    const installments = parseInt(installmentsValue) || 1;
+    return format(addMonths(start, installments), 'yyyy-MM-dd');
+  };
   
   const [form, setForm] = useState({ 
     username: '', 
@@ -34,42 +81,14 @@ function UsersContent() {
     dni: '', 
     address: '', 
     colegiatura: '',
-    role: 'doctor' as UserRole,
+    role: 'doctor' as AdminUserRole,
     subscriptionFee: '50',
-    nextPaymentDate: '',
-    contractStartDate: new Date().toISOString().split('T')[0],
+    nextPaymentDate: calculateNextPaymentDate(todayDate, '1'),
+    contractStartDate: todayDate,
     paymentFrequency: 'monthly' as 'monthly' | 'yearly',
     advanceInstallments: '1',
     subscriptionStatus: 'active' as 'active' | 'suspended' | 'blocked'
   });
-
-  useEffect(() => {
-    load();
-  }, [currentUser]);
-
-  useEffect(() => {
-    if (currentUser?.role === 'admin' && form.contractStartDate && !editingId) {
-      const installments = parseInt(form.advanceInstallments) || 1;
-      const start = parseISO(form.contractStartDate);
-      if (isValid(start)) {
-        const next = addMonths(start, installments);
-        setForm(prev => ({ ...prev, nextPaymentDate: format(next, 'yyyy-MM-dd') }));
-      }
-    }
-  }, [form.contractStartDate, form.advanceInstallments, currentUser?.role, editingId]);
-
-  const load = async () => {
-    if (!currentUser) return;
-    const all = await db.getAll<User>('users');
-    
-    // SECURITY: Ensure data isolation
-    if (currentUser.role === 'admin') {
-      setUsers(all.filter(u => u.role === 'clinic'));
-    } 
-    else if (currentUser.role === 'clinic') {
-      setUsers(all.filter(u => u.clinicId === currentUser.id));
-    }
-  };
 
   const safeFormatDate = (dateStr?: string) => {
     if (!dateStr) return '---';
@@ -107,16 +126,38 @@ function UsersContent() {
     }, 1500);
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 2 * 1024 * 1024) {
         toast({ variant: "destructive", title: "Archivo demasiado grande", description: "El límite es 2MB." });
         return;
       }
+
+      // Mostrar vista previa inmediata (data URL) mientras sube
       const reader = new FileReader();
       reader.onloadend = () => setPhotoPreview(reader.result as string);
       reader.readAsDataURL(file);
+
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch('/api/uploads', { method: 'POST', body: formData });
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          toast({ variant: 'destructive', title: 'Error al subir', description: body?.error || 'Error de servidor' });
+          return;
+        }
+        const data = await res.json();
+        if (data?.url) {
+          setUploadedPhotoUrl(data.url);
+          setPhotoPreview(data.url);
+        } else {
+          toast({ variant: 'destructive', title: 'Error al subir', description: 'Respuesta inválida del servidor' });
+        }
+      } catch (err) {
+        toast({ variant: 'destructive', title: 'Error al subir', description: 'No se pudo conectar' });
+      }
     }
   };
 
@@ -126,52 +167,77 @@ function UsersContent() {
 
     const isAdmin = currentUser.role === 'admin';
 
-    const newUser: User = {
-      id: editingId || crypto.randomUUID(),
+    const payload: SaveUserPayload = {
       username: isAdmin ? form.username : undefined,
-      password: isAdmin ? form.password : (editingId ? users.find(u => u.id === editingId)?.password : '123456'), // Default pass for staff
+      password: form.password.trim() || undefined,
       fullName: form.fullName,
       dni: form.dni,
       address: form.address,
       colegiatura: form.colegiatura,
-      photo: photoPreview || undefined,
+      photo: uploadedPhotoUrl || undefined,
       role: isAdmin ? 'clinic' : form.role,
-      clinicId: currentUser.role === 'clinic' ? currentUser.id : undefined,
-      status: editingId ? (users.find(u => u.id === editingId)?.status || 'inactive') : 'inactive',
-      subscriptionFee: isAdmin ? parseFloat(form.subscriptionFee) : undefined,
+      subscriptionFee: isAdmin ? (parseFloat(form.subscriptionFee) || 0) : undefined,
+      subscriptionStatus: form.subscriptionStatus,
       nextPaymentDate: isAdmin ? form.nextPaymentDate : undefined,
       contractStartDate: isAdmin ? form.contractStartDate : undefined,
       paymentFrequency: 'monthly',
-      subscriptionStatus: form.subscriptionStatus,
-      registeredByAdminId: (isAdmin && !editingId) ? currentUser.username : (users.find(u => u.id === editingId)?.registeredByAdminId)
     };
 
-    await db.put('users', newUser);
+    if (isAdmin && !editingId && !payload.password) {
+      toast({
+        variant: 'destructive',
+        title: 'Clave requerida',
+        description: 'Ingrese una clave para el nuevo consultorio.',
+      });
+      return;
+    }
+
+    if (isAdmin && !editingId && payload.password && payload.password.length < 8) {
+      toast({
+        variant: 'destructive',
+        title: 'Clave invalida',
+        description: 'La clave del consultorio debe tener al menos 8 caracteres.',
+      });
+      return;
+    }
+
+    const saved = editingId
+      ? await updateUserMutation.mutate({ ...payload, id: editingId })
+      : await createUserMutation.mutate(payload);
+
+    if (!saved) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo guardar',
+        description: updateUserMutation.error || createUserMutation.error || 'Intente nuevamente',
+      });
+      return;
+    }
 
     if (isAdmin && !editingId) {
       const installments = parseInt(form.advanceInstallments) || 1;
-      const totalAmount = (newUser.subscriptionFee || 0) * installments;
-      
-      await db.put('subscription_payments', {
-        id: crypto.randomUUID(),
-        clinicId: newUser.id,
-        clinicName: newUser.fullName || newUser.username || 'Nuevo Consultorio',
+      const totalAmount = (parseFloat(form.subscriptionFee) || 0) * installments;
+
+      await registerInitialPaymentMutation.mutate({
+        clinicId: saved.id,
         amount: totalAmount,
-        date: new Date().toISOString().split('T')[0],
+        installments,
+        nextPaymentDate: form.nextPaymentDate,
         concept: `Pago inicial: ${installments} cuota(s) mensuales adelantadas`,
-        processedByAdminId: currentUser.username
       });
     }
 
     setIsOpen(false);
     resetForm();
     toast({ title: editingId ? 'Actualizado correctamente' : 'Registrado correctamente' });
-    load();
+    refetch();
   };
 
   const resetForm = () => {
     setEditingId(null);
     setPhotoPreview(null);
+    setUploadedPhotoUrl(null);
+    setIsBillingScheduleDirty(false);
     setForm({ 
       username: '', 
       password: '', 
@@ -181,8 +247,8 @@ function UsersContent() {
       colegiatura: '',
       role: currentUser?.role === 'clinic' ? 'doctor' : 'clinic',
       subscriptionFee: '50',
-      nextPaymentDate: '',
-      contractStartDate: new Date().toISOString().split('T')[0],
+      nextPaymentDate: calculateNextPaymentDate(todayDate, '1'),
+      contractStartDate: todayDate,
       paymentFrequency: 'monthly',
       advanceInstallments: '1',
       subscriptionStatus: 'active'
@@ -191,17 +257,27 @@ function UsersContent() {
 
   const handleDelete = async (id: string) => {
     if (confirm('¿ELIMINAR REGISTRO? Esta acción es definitiva.')) {
-      await db.delete('users', id);
+      const deleted = await deleteUserMutation.mutate({ id });
+      if (!deleted) {
+        toast({
+          variant: 'destructive',
+          title: 'No se pudo eliminar',
+          description: deleteUserMutation.error || 'Intente nuevamente',
+        });
+        return;
+      }
+
       toast({ title: "Registro eliminado", variant: "destructive" });
-      load();
+      refetch();
     }
   };
 
-  const openEdit = (u: User) => {
+  const openEdit = (u: AdminUser) => {
     setEditingId(u.id);
+    setIsBillingScheduleDirty(false);
     setForm({ 
       username: u.username || '', 
-      password: u.password || '', 
+      password: '', 
       fullName: u.fullName || '', 
       dni: u.dni || '', 
       address: u.address || '', 
@@ -215,10 +291,27 @@ function UsersContent() {
       subscriptionStatus: u.subscriptionStatus
     });
     setPhotoPreview(u.photo || null);
+    setUploadedPhotoUrl(u.photo || null);
     setIsOpen(true);
   };
 
   if (!currentUser) return null;
+
+  if (usersLoading) {
+    return (
+      <AppLayout>
+        <div className="py-20 text-center text-sm font-semibold text-muted-foreground">Cargando usuarios...</div>
+      </AppLayout>
+    );
+  }
+
+  if (usersError) {
+    return (
+      <AppLayout>
+        <div className="py-20 text-center text-sm font-semibold text-destructive">{usersError}</div>
+      </AppLayout>
+    );
+  }
 
   const isAdmin = currentUser.role === 'admin';
   const totalInformational = (parseFloat(form.subscriptionFee) || 0) * (parseInt(form.advanceInstallments) || 1);
@@ -284,7 +377,7 @@ function UsersContent() {
                     <div className="flex gap-3">
                       <div className="relative flex-1">
                         <Search className="absolute left-4 top-3.5 w-5 h-5 text-muted-foreground" />
-                        <Input id="dni" value={form.dni} onChange={e => setForm({...form, dni: e.target.value.replace(/\D/g, '').slice(0, 11)})} maxLength={11} className="pl-12 h-12 rounded-xl bg-slate-50 border-none shadow-inner text-lg font-bold" placeholder="45678901" />
+                        <Input id="dni" value={form.dni} onChange={e => setForm({...form, dni: e.target.value.replace(/\D/g, '').slice(0, 11)})} maxLength={11} className={cn("pl-12", fieldClassName)} placeholder="45678901" />
                       </div>
                       <Button 
                         type="button" 
@@ -303,18 +396,18 @@ function UsersContent() {
                     <Label htmlFor="fullName" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
                       {isAdmin ? 'Nombre Comercial / Razón Social' : 'Nombre Completo del Personal'}
                     </Label>
-                    <Input id="fullName" value={form.fullName} onChange={e => setForm({...form, fullName: e.target.value})} required className="h-12 rounded-xl bg-slate-50 border-none shadow-inner text-lg font-black text-primary" placeholder="Se completará automáticamente" />
+                    <Input id="fullName" value={form.fullName} onChange={e => setForm({...form, fullName: e.target.value})} required className={cn(strongFieldClassName, "text-primary dark:text-primary") } placeholder="Se completará automáticamente" />
                   </div>
                   
                   {isAdmin && (
                     <>
                       <div className="space-y-3">
                         <Label htmlFor="username" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">ID de Usuario</Label>
-                        <Input id="username" value={form.username} onChange={e => setForm({...form, username: e.target.value})} required={isAdmin} className="h-12 rounded-xl bg-slate-50 border-none shadow-inner font-bold" />
+                        <Input id="username" value={form.username} onChange={e => setForm({...form, username: e.target.value})} required={isAdmin && !editingId} className={fieldClassName} />
                       </div>
                       <div className="space-y-3">
                         <Label htmlFor="password" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Clave de Seguridad</Label>
-                        <Input id="password" type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} required={isAdmin} className="h-12 rounded-xl bg-slate-50 border-none shadow-inner" />
+                        <Input id="password" type="password" minLength={isAdmin && !editingId ? 8 : undefined} value={form.password} onChange={e => setForm({...form, password: e.target.value})} required={isAdmin && !editingId} className={fieldClassName} />
                       </div>
 
                       <div className="col-span-full border-t border-dashed pt-10">
@@ -329,19 +422,35 @@ function UsersContent() {
                               <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Fecha de Activación</Label>
                               <div className="relative">
                                 <Calendar className="absolute left-4 top-3.5 w-5 h-5 text-primary" />
-                                <Input type="date" value={form.contractStartDate} onChange={e => setForm({...form, contractStartDate: e.target.value})} className="h-12 pl-12 rounded-xl border-none shadow-inner font-bold" />
+                                <Input type="date" value={form.contractStartDate} onChange={e => {
+                                  const contractStartDate = e.target.value;
+                                  setIsBillingScheduleDirty(true);
+                                  setForm({
+                                    ...form,
+                                    contractStartDate,
+                                    nextPaymentDate: calculateNextPaymentDate(contractStartDate, form.advanceInstallments),
+                                  });
+                                }} className={cn("pl-12", fieldClassName)} />
                               </div>
                             </div>
                             
                             <div className="space-y-3">
                               <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Costo de Membresía (S/.)</Label>
-                              <Input type="number" step="0.01" value={form.subscriptionFee} onChange={e => setForm({...form, subscriptionFee: e.target.value})} className="h-12 rounded-xl border-none shadow-inner font-black text-xl" />
+                              <Input type="number" step="0.01" value={form.subscriptionFee} onChange={e => setForm({...form, subscriptionFee: e.target.value})} className={cn(strongFieldClassName, "text-xl")} />
                             </div>
 
                             <div className="space-y-3">
                               <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Cuotas Adelantadas</Label>
-                              <Select value={form.advanceInstallments} onValueChange={(v: any) => setForm({...form, advanceInstallments: v})}>
-                                <SelectTrigger className="h-12 rounded-xl border-none shadow-inner font-bold"><SelectValue /></SelectTrigger>
+                              <Select value={form.advanceInstallments} onValueChange={(v: any) => {
+                                const nextInstallments = String(v);
+                                setIsBillingScheduleDirty(true);
+                                setForm({
+                                  ...form,
+                                  advanceInstallments: nextInstallments,
+                                  nextPaymentDate: calculateNextPaymentDate(form.contractStartDate, nextInstallments),
+                                });
+                              }}>
+                                <SelectTrigger className="h-12 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-inner font-bold text-slate-900 dark:text-slate-100"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   {installmentOptions.map(n => (
                                     <SelectItem key={n} value={n.toString()}>{n} mes(es)</SelectItem>
@@ -376,7 +485,7 @@ function UsersContent() {
                               <ShieldAlert className="w-4 h-4 text-amber-500" /> Estado de Acceso al Sistema
                             </Label>
                             <Select value={form.subscriptionStatus} onValueChange={(v: any) => setForm({...form, subscriptionStatus: v})}>
-                              <SelectTrigger className="h-12 rounded-xl border-none shadow-inner font-black bg-white dark:bg-slate-950">
+                              <SelectTrigger className="h-12 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-inner font-black text-slate-900 dark:text-slate-100">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -395,7 +504,7 @@ function UsersContent() {
                     <div className="space-y-3 col-span-full">
                       <Label htmlFor="role" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Cargo / Especialidad Clínica</Label>
                       <Select value={form.role} onValueChange={(v: any) => setForm({...form, role: v})}>
-                        <SelectTrigger className="h-12 rounded-xl border-none shadow-inner font-bold bg-slate-50">
+                        <SelectTrigger className="h-12 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-inner font-bold text-slate-900 dark:text-slate-100">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -411,7 +520,7 @@ function UsersContent() {
                     <Label htmlFor="colegiatura" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">N° de Colegiatura / Registro</Label>
                     <div className="relative">
                       <Stethoscope className="absolute left-4 top-3.5 w-5 h-5 text-muted-foreground" />
-                      <Input id="colegiatura" value={form.colegiatura} onChange={e => setForm({...form, colegiatura: e.target.value})} required={!isAdmin && form.role === 'doctor'} className="pl-12 h-12 rounded-xl bg-slate-50 border-none shadow-inner font-bold" placeholder="COP 12345" />
+                      <Input id="colegiatura" value={form.colegiatura} onChange={e => setForm({...form, colegiatura: e.target.value})} required={!isAdmin && form.role === 'doctor'} className={cn("pl-12", fieldClassName)} placeholder="COP 12345" />
                     </div>
                   </div>
 
@@ -419,7 +528,7 @@ function UsersContent() {
                     <Label htmlFor="address" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Ubicación / Consultorio</Label>
                     <div className="relative">
                       <MapPin className="absolute left-4 top-3.5 w-5 h-5 text-muted-foreground" />
-                      <Input id="address" className="pl-12 h-12 rounded-xl bg-slate-50 border-none shadow-inner font-bold" value={form.address} onChange={e => setForm({...form, address: e.target.value})} placeholder="Ej: Av. El Sol 123, Cusco" />
+                      <Input id="address" className={cn("pl-12", fieldClassName)} value={form.address} onChange={e => setForm({...form, address: e.target.value})} placeholder="Ej: Av. El Sol 123, Cusco" />
                     </div>
                   </div>
                 </div>
@@ -472,7 +581,7 @@ function UsersContent() {
                       </div>
                       <p className="flex justify-between items-center">
                         <span className="font-black text-muted-foreground uppercase tracking-widest">Mensualidad:</span> 
-                        <b className="text-primary font-black text-lg">S/. {u.subscriptionFee?.toFixed(2)}</b>
+                        <b className="text-primary font-black text-lg">S/. {(u.subscriptionFee || 0).toFixed(2)}</b>
                       </p>
                       <p className="flex justify-between items-center border-t border-dashed pt-3 mt-3">
                         <span className="font-black text-muted-foreground uppercase tracking-widest">Próximo Pago:</span> 
@@ -500,7 +609,7 @@ function UsersContent() {
               <Building2 className="w-24 h-24 text-slate-400" />
               <div className="space-y-2">
                 <p className="font-black text-2xl uppercase tracking-widest">Sin consultorios registrados</p>
-                <p className="text-sm font-medium">Inicie la expansión de la red añadiendo el primer establecimiento.</p>
+                        <Input id="username" value={form.username} onChange={e => setForm({...form, username: e.target.value})} required={isAdmin && !editingId} className={fieldClassName} />
               </div>
             </div>
           )}

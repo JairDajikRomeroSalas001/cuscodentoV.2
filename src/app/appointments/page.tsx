@@ -1,13 +1,11 @@
-
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { db, Appointment, Patient, Treatment, User, Payment } from '@/lib/db';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Calendar as CalendarIcon, Clock, User as UserIcon, Filter, Search, Check, Trash2, ShieldAlert, CalendarSearch } from 'lucide-react';
+import { Plus, Calendar as CalendarIcon, Clock, Search, Trash2, ShieldAlert } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -19,22 +17,103 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { format, isToday, isWithinInterval, addDays, parseISO } from 'date-fns';
 
+type ApiPatient = {
+  id: string;
+  dni: string;
+  full_name: string;
+};
+
+type ApiTreatment = {
+  id: string;
+  name: string;
+  price: string | number;
+};
+
+type ApiAppointment = {
+  id: string;
+  patient_id: string;
+  doctor_id: string;
+  treatment_id?: string | null;
+  date: string;
+  time: string;
+  cost: string | number;
+  status: string;
+  observations?: string | null;
+  patient?: { id: string; full_name: string };
+  doctor?: { id: string; full_name: string | null };
+  treatment?: { id: string; name: string; price: string | number };
+};
+
+type ViewAppointment = {
+  id: string;
+  patientId: string;
+  doctorId: string;
+  treatmentId?: string;
+  dateIso: string;
+  dateKey: string;
+  time: string;
+  patientName: string;
+  treatmentName: string;
+  doctorName: string;
+  cost: number;
+  status: 'Asignado' | 'Atendido';
+};
+
+async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers || {}),
+    },
+  });
+
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body?.error || 'Error de API');
+  }
+
+  // Compatibilidad con respuestas planas (apiOk) y con envoltura { success, data }.
+  if (typeof body === 'object' && body !== null && 'success' in body) {
+    const wrapped = body as { success?: boolean; data?: T; error?: string };
+    if (!wrapped.success) {
+      throw new Error(wrapped.error || 'Error de API');
+    }
+    return (wrapped.data as T) ?? (body as T);
+  }
+
+  return body as T;
+}
+
+function mapStatusToUi(status: string): 'Asignado' | 'Atendido' {
+  return status === 'completed' || status === 'attended' ? 'Atendido' : 'Asignado';
+}
+
+function mapStatusToApi(status: 'Asignado' | 'Atendido'): 'scheduled' | 'completed' {
+  return status === 'Atendido' ? 'completed' : 'scheduled';
+}
+
+function toDateKey(isoDate: string) {
+  const d = parseISO(isoDate);
+  return format(d, 'yyyy-MM-dd');
+}
+
 function AppointmentsContent() {
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
-  const [rawAppointments, setRawAppointments] = useState<any[]>([]);
-  const [appointments, setAppointments] = useState<any[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [treatments, setTreatments] = useState<Treatment[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [rawAppointments, setRawAppointments] = useState<ViewAppointment[]>([]);
+  const [appointments, setAppointments] = useState<ViewAppointment[]>([]);
+  const [patients, setPatients] = useState<ApiPatient[]>([]);
+  const [treatments, setTreatments] = useState<ApiTreatment[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [appointmentToDelete, setAppointmentToDelete] = useState<string | null>(null);
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [confirmWord, setConfirmWord] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'today' | 'week' | 'specific'>('all');
   const [specificDate, setSpecificDate] = useState('');
-  
-  const clinicId = currentUser?.role === 'clinic' ? currentUser.id : currentUser?.clinicId;
+
+  const [staffList, setStaffList] = useState<Array<{ id: string; label: string }>>([]);
 
   const [form, setForm] = useState({
     patientId: '',
@@ -45,42 +124,66 @@ function AppointmentsContent() {
     observations: '',
     status: 'Asignado' as 'Asignado' | 'Atendido',
     cost: 0,
-    discountAmount: 0,
-    paidAmount: 0,
     patientSearch: '',
   });
 
   useEffect(() => {
-    if (currentUser) load();
-  }, [currentUser]);
+    if (currentUser) {
+      load();
+      // inicialmente, dejaremos doctorId en blanco; se establecerá cuando carguemos staff
+      setForm((prev) => ({ ...prev, doctorId: currentUser.id }));
+    }
+  }, [currentUser?.id]);
 
   useEffect(() => {
     applyFilters();
   }, [rawAppointments, filterType, specificDate]);
 
   const load = async () => {
-    if (!currentUser || !clinicId) return;
+    try {
+      const [patientsData, treatmentsData, appointmentsData, staffData] = await Promise.all([
+        apiRequest<{ items: ApiPatient[]; total: number; page: number; limit: number; totalPages: number }>('/api/patients?limit=200&view=lookup'),
+        apiRequest<{ items: ApiTreatment[] }>('/api/treatments'),
+        apiRequest<{ items: ApiAppointment[] }>('/api/appointments?view=calendar'),
+        apiRequest<{ items: Array<{ id: string; fullName?: string; username?: string; role?: string }> }>('/api/admin/users'),
+      ]);
 
-    const allA = await db.getAll<Appointment>('appointments');
-    const allP = await db.getAll<Patient>('patients');
-    const allT = await db.getAll<Treatment>('treatments');
-    const allU = await db.getAll<User>('users');
-    
-    const myPatients = allP.filter(p => p.clinicId === clinicId);
-    const myTreatments = allT.filter(t => t.clinicId === clinicId);
-    const myUsers = allU.filter(u => u.id === clinicId || u.clinicId === clinicId);
-    const myAppointments = allA.filter(a => a.clinicId === clinicId);
+      setPatients(patientsData.items || []);
+      setTreatments(treatmentsData.items || []);
 
-    setPatients(myPatients);
-    setTreatments(myTreatments);
-    setUsers(myUsers);
+      const mapped: ViewAppointment[] = (appointmentsData.items || []).map((a) => ({
+        id: a.id,
+        patientId: a.patient_id,
+        doctorId: a.doctor_id,
+        treatmentId: a.treatment_id || undefined,
+        dateIso: a.date,
+        dateKey: toDateKey(a.date),
+        time: a.time,
+        patientName: a.patient?.full_name || 'Paciente',
+        treatmentName: a.treatment?.name || 'Tratamiento',
+        doctorName: a.doctor?.full_name || 'Doctor',
+        cost: Number(a.cost) || 0,
+        status: mapStatusToUi(a.status),
+      }));
 
-    const combined = myAppointments.map(a => ({
-      ...a,
-      patientName: myPatients.find(p => p.id === a.patientId)?.lastNames || 'Paciente',
-      treatmentName: myTreatments.find(t => t.id === a.treatmentId)?.name || 'Tratamiento'
-    }));
-    setRawAppointments(combined);
+      setRawAppointments(mapped);
+
+      // Mapear staff para el select de medicos
+      const staffItems = (staffData.items || [])
+        .filter((u) => u && u.id)
+        .map((u) => ({ id: u.id, label: u.fullName || u.username || 'Medico' }));
+
+      setStaffList(staffItems);
+
+      // Si el formulario no tiene doctor asignado, establecer el primero disponible
+      setForm((prev) => ({ ...prev, doctorId: prev.doctorId || staffItems[0]?.id || prev.doctorId }));
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo cargar agenda',
+        description: error instanceof Error ? error.message : 'Error inesperado',
+      });
+    }
   };
 
   const applyFilters = () => {
@@ -88,140 +191,140 @@ function AppointmentsContent() {
     const today = new Date();
 
     if (filterType === 'today') {
-      filtered = filtered.filter(a => isToday(parseISO(a.date)));
+      filtered = filtered.filter((a) => isToday(parseISO(a.dateIso)));
     } else if (filterType === 'week') {
       const nextWeek = addDays(today, 7);
-      filtered = filtered.filter(a => {
-        const appDate = parseISO(a.date);
+      filtered = filtered.filter((a) => {
+        const appDate = parseISO(a.dateIso);
         return isWithinInterval(appDate, { start: today, end: nextWeek });
       });
     } else if (filterType === 'specific' && specificDate) {
-      filtered = filtered.filter(a => a.date === specificDate);
+      filtered = filtered.filter((a) => a.dateKey === specificDate);
     }
 
-    setAppointments(filtered.sort((a, b) => {
-      const dateCompare = a.date.localeCompare(b.date);
-      if (dateCompare !== 0) return dateCompare;
-      return a.time.localeCompare(b.time);
-    }));
+    setAppointments(
+      filtered.sort((a, b) => {
+        const dateCompare = a.dateKey.localeCompare(b.dateKey);
+        if (dateCompare !== 0) return dateCompare;
+        return a.time.localeCompare(b.time);
+      })
+    );
   };
 
   const handleTreatmentChange = (tid: string) => {
-    const t = treatments.find(x => x.id === tid);
-    setForm({ ...form, treatmentId: tid, cost: t ? t.price : 0 });
+    const t = treatments.find((x) => x.id === tid);
+    setForm({ ...form, treatmentId: tid, cost: Number(t?.price || 0) });
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clinicId) return;
 
-    const conflict = rawAppointments.find(a => 
-      a.doctorId === form.doctorId && 
-      a.date === form.date && 
-      a.time === form.time
+    const conflict = rawAppointments.find(
+      (a) => a.doctorId === form.doctorId && a.dateKey === form.date && a.time === form.time
     );
 
     if (conflict) {
-      toast({ 
-        variant: 'destructive', 
-        title: 'Conflicto de Horario', 
-        description: `El doctor seleccionado ya tiene una cita programada a las ${form.time} en esta fecha.` 
+      toast({
+        variant: 'destructive',
+        title: 'Conflicto de horario',
+        description: `El doctor ya tiene una cita programada a las ${form.time}.`,
       });
       return;
     }
 
-    const doctor = users.find(u => u.id === form.doctorId);
-    const finalCost = Math.max(0, form.cost - form.discountAmount);
-    const paid = Math.min(finalCost, form.paidAmount);
-    const balance = Math.max(0, finalCost - paid);
+    try {
+      await apiRequest('/api/appointments', {
+        method: 'POST',
+        body: JSON.stringify({
+          patient_id: form.patientId,
+          doctor_id: form.doctorId,
+          treatment_id: form.treatmentId || undefined,
+          date: form.date,
+          time: form.time,
+          cost: Math.max(0.01, form.cost),
+          status: mapStatusToApi(form.status),
+          observations: form.observations || undefined,
+        }),
+      });
 
-    const appointment: Appointment = {
-      id: crypto.randomUUID(),
-      patientId: form.patientId,
-      treatmentId: form.treatmentId,
-      doctorId: form.doctorId,
-      doctorName: doctor?.fullName || doctor?.username || 'Médico',
-      date: form.date,
-      time: form.time,
-      observations: form.observations,
-      status: form.status,
-      cost: finalCost,
-      applyDiscount: form.discountAmount > 0,
-      paidAmount: paid,
-      balance: balance,
-      clinicId: clinicId
-    };
-
-    await db.put('appointments', appointment);
-
-    if (paid > 0 || finalCost > 0) {
-      const treatment = treatments.find(t => t.id === form.treatmentId);
-      const payment: Payment = {
-        id: crypto.randomUUID(),
-        patientId: form.patientId,
-        appointmentId: appointment.id,
-        treatmentName: treatment?.name || 'Consulta',
-        amount: paid,
-        totalCost: finalCost,
-        totalPaid: paid,
-        balance: balance,
-        date: form.date,
-        time: form.time,
-        observations: form.observations,
-        history: paid > 0 ? [{ date: form.date, time: form.time, amount: paid }] : [],
-        clinicId: clinicId
-      };
-      await db.put('payments', payment);
+      setIsOpen(false);
+      toast({ title: 'Cita registrada' });
+      setForm({
+        patientId: '',
+        treatmentId: '',
+        doctorId: currentUser?.id || '',
+        date: '',
+        time: '',
+        observations: '',
+        status: 'Asignado',
+        cost: 0,
+        patientSearch: '',
+      });
+      load();
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo guardar la cita',
+        description: error instanceof Error ? error.message : 'Error inesperado',
+      });
     }
-
-    setIsOpen(false);
-    toast({ title: "Cita Registrada", description: `Saldo: S/. ${balance.toFixed(2)}` });
-    setForm({ patientId: '', treatmentId: '', doctorId: '', date: '', time: '', observations: '', status: 'Asignado', cost: 0, discountAmount: 0, paidAmount: 0, patientSearch: '' });
-    load();
   };
 
   const updateStatus = async (appointmentId: string, newStatus: 'Asignado' | 'Atendido') => {
-    const app = rawAppointments.find(a => a.id === appointmentId);
-    if (app) {
-      await db.put('appointments', { ...app, status: newStatus });
-      toast({ title: "Estado Actualizado", description: `La cita ahora está marcada como ${newStatus}` });
+    try {
+      await apiRequest(`/api/appointments/${appointmentId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: mapStatusToApi(newStatus) }),
+      });
+      toast({ title: 'Estado actualizado', description: `La cita ahora esta en ${newStatus}.` });
       load();
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo actualizar estado',
+        description: error instanceof Error ? error.message : 'Error inesperado',
+      });
     }
   };
 
   const handleDeleteRequest = (id: string) => {
     setAppointmentToDelete(id);
-    setConfirmPassword('');
+    setConfirmWord('');
     setIsDeleteOpen(true);
   };
 
   const confirmDelete = async () => {
-    if (!currentUser) return;
-    
-    const allUsers = await db.getAll<User>('users');
-    const me = allUsers.find(u => u.id === currentUser.id);
-    
-    if (me && me.password === confirmPassword) {
-      if (appointmentToDelete) {
-        await db.delete('appointments', appointmentToDelete);
-        setIsDeleteOpen(false);
-        setAppointmentToDelete(null);
-        toast({ title: "Cita Eliminada" });
-        load();
-      }
-    } else {
-      toast({ variant: 'destructive', title: 'Error', description: 'Contraseña incorrecta. No se puede eliminar la cita.' });
+    if (!appointmentToDelete) return;
+
+    if (confirmWord.trim().toUpperCase() !== 'ELIMINAR') {
+      toast({
+        variant: 'destructive',
+        title: 'Confirmacion invalida',
+        description: 'Escriba ELIMINAR para confirmar la eliminacion.',
+      });
+      return;
+    }
+
+    try {
+      await apiRequest(`/api/appointments/${appointmentToDelete}`, { method: 'DELETE' });
+      setIsDeleteOpen(false);
+      setAppointmentToDelete(null);
+      toast({ title: 'Cita eliminada' });
+      load();
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo eliminar cita',
+        description: error instanceof Error ? error.message : 'Error inesperado',
+      });
     }
   };
 
-  const filteredPatientList = patients.filter(p => 
-    p.names.toLowerCase().includes(form.patientSearch.toLowerCase()) || 
-    p.lastNames.toLowerCase().includes(form.patientSearch.toLowerCase()) ||
-    p.dni.includes(form.patientSearch)
+  const filteredPatientList = patients.filter(
+    (p) =>
+      p.full_name.toLowerCase().includes(form.patientSearch.toLowerCase()) ||
+      p.dni.includes(form.patientSearch)
   );
-
-  const previewFinal = Math.max(0, form.cost - form.discountAmount);
-  const previewBalance = Math.max(0, previewFinal - form.paidAmount);
 
   return (
     <AppLayout>
@@ -229,10 +332,10 @@ function AppointmentsContent() {
         <div className="flex justify-between items-center">
           <div>
             <h2 className="text-3xl font-bold text-primary">Agenda de Citas</h2>
-            <p className="text-muted-foreground mt-1">Gestión de turnos y presupuestos (DD/MM/YYYY)</p>
+            <p className="text-muted-foreground mt-1">Gestion de turnos y agenda clinica</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => { setFilterType('all'); setSpecificDate(''); }} className={cn(filterType === 'all' && "bg-primary/10")}>
+            <Button variant="outline" onClick={() => { setFilterType('all'); setSpecificDate(''); }} className={cn(filterType === 'all' && 'bg-primary/10')}>
               Ver Todo
             </Button>
             <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -242,35 +345,43 @@ function AppointmentsContent() {
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
-                <DialogHeader><DialogTitle>Programar Cita</DialogTitle></DialogHeader>
+                <DialogHeader>
+                  <DialogTitle>Programar Cita</DialogTitle>
+                  <DialogDescription>
+                    Complete los datos del paciente y horario para registrar una nueva cita.
+                  </DialogDescription>
+                </DialogHeader>
                 <form onSubmit={handleSave} className="grid grid-cols-2 gap-4 py-4">
                   <div className="col-span-2 space-y-2 relative">
-                    <Label>Buscar Paciente (Escribe DNI o Nombre)</Label>
+                    <Label>Buscar Paciente</Label>
                     <div className="relative">
                       <Search className="absolute left-3 top-3 w-4 h-4 opacity-50" />
-                      <Input 
-                        placeholder="Ej: 45678912 o Juan Pérez" 
-                        className="pl-10 h-11" 
-                        value={form.patientSearch} 
-                        onChange={e => setForm({...form, patientSearch: e.target.value, patientId: ''})} 
+                      <Input
+                        placeholder="Ej: 45678912 o Juan Perez"
+                        className="pl-10 h-11"
+                        value={form.patientSearch}
+                        onChange={(e) => setForm({ ...form, patientSearch: e.target.value, patientId: '' })}
                       />
                     </div>
                     {form.patientSearch && form.patientId === '' && (
                       <div className="border rounded-md max-h-48 overflow-y-auto bg-white shadow-2xl absolute w-full top-full mt-1 z-[100] border-primary/20">
-                        {filteredPatientList.length > 0 ? filteredPatientList.map(p => (
-                          <div 
-                            key={p.id} 
-                            className="p-3 cursor-pointer hover:bg-primary/10 border-b flex justify-between items-center bg-white" 
-                            onClick={() => setForm({...form, patientId: p.id, patientSearch: `${p.lastNames}, ${p.names} (DNI: ${p.dni})`})}
-                          >
-                            <div>
-                              <p className="font-bold">{p.lastNames}, {p.names}</p>
-                              <p className="text-[10px] text-muted-foreground">Celular: {p.phone}</p>
+                        {filteredPatientList.length > 0 ? (
+                          filteredPatientList.map((p) => (
+                            <div
+                              key={p.id}
+                              className="p-3 cursor-pointer hover:bg-primary/10 border-b flex justify-between items-center bg-white"
+                              onClick={() => setForm({ ...form, patientId: p.id, patientSearch: `${p.full_name} (DNI: ${p.dni})` })}
+                            >
+                              <div>
+                                <p className="font-bold">{p.full_name}</p>
+                              </div>
+                              <Badge variant="outline" className="font-mono">
+                                DNI: {p.dni}
+                              </Badge>
                             </div>
-                            <Badge variant="outline" className="font-mono">DNI: {p.dni}</Badge>
-                          </div>
-                        )) : (
-                          <div className="p-4 text-center text-xs text-muted-foreground bg-white">No se encontró el paciente</div>
+                          ))
+                        ) : (
+                          <div className="p-4 text-center text-xs text-muted-foreground bg-white">No se encontro el paciente</div>
                         )}
                       </div>
                     )}
@@ -279,57 +390,61 @@ function AppointmentsContent() {
                   <div className="space-y-2">
                     <Label>Tratamiento</Label>
                     <Select onValueChange={handleTreatmentChange}>
-                      <SelectTrigger><SelectValue placeholder="Seleccione..." /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccione..." />
+                      </SelectTrigger>
                       <SelectContent>
-                        {treatments.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                        {treatments.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.name}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Médico</Label>
-                    <Select onValueChange={v => setForm({...form, doctorId: v})}>
-                      <SelectTrigger><SelectValue placeholder="Seleccione Doctor" /></SelectTrigger>
+                    <Label>Medico</Label>
+                    <Select onValueChange={(v) => setForm({ ...form, doctorId: v })} value={form.doctorId || undefined}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccione Doctor" />
+                      </SelectTrigger>
                       <SelectContent>
-                        {users.map(u => <SelectItem key={u.id} value={u.id}>{u.fullName || u.username}</SelectItem>)}
+                        {(staffList.length > 0 ? staffList : [{ id: currentUser?.id || '', label: currentUser?.fullName || currentUser?.full_name || currentUser?.email || 'Odontologo' }]).map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
 
                   <div className="space-y-2">
                     <Label>Fecha</Label>
-                    <Input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} required />
+                    <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
                   </div>
 
                   <div className="space-y-2">
                     <Label>Hora</Label>
-                    <Input type="time" value={form.time} onChange={e => setForm({...form, time: e.target.value})} required />
+                    <Input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} required />
                   </div>
 
                   <div className="col-span-2 space-y-2">
                     <Label>Observaciones</Label>
-                    <Textarea value={form.observations} onChange={e => setForm({...form, observations: e.target.value})} />
+                    <Textarea value={form.observations} onChange={(e) => setForm({ ...form, observations: e.target.value })} />
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Costo Base (S/.)</Label>
-                    <Input type="number" step="0.01" value={form.cost} onChange={e => setForm({...form, cost: parseFloat(e.target.value) || 0})} />
+                    <Label>Costo (S/.)</Label>
+                    <Input type="number" step="0.01" value={form.cost} onChange={(e) => setForm({ ...form, cost: parseFloat(e.target.value) || 0 })} />
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Descuento Directo (S/.)</Label>
-                    <Input type="number" step="0.01" value={form.discountAmount} onChange={e => setForm({...form, discountAmount: parseFloat(e.target.value) || 0})} className="text-emerald-600 font-bold" />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Abono inicial (S/.)</Label>
-                    <Input type="number" step="0.01" value={form.paidAmount} onChange={e => setForm({...form, paidAmount: parseFloat(e.target.value) || 0})} />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Estado de la Cita</Label>
-                    <Select onValueChange={v => setForm({...form, status: v as any})} defaultValue="Asignado">
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                    <Label>Estado</Label>
+                    <Select onValueChange={(v) => setForm({ ...form, status: v as 'Asignado' | 'Atendido' })} defaultValue="Asignado">
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Asignado">Asignado</SelectItem>
                         <SelectItem value="Atendido">Atendido</SelectItem>
@@ -337,19 +452,10 @@ function AppointmentsContent() {
                     </Select>
                   </div>
 
-                  <div className="col-span-2 bg-muted p-4 rounded-lg flex justify-between items-center">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-muted-foreground">Total Final</span>
-                      <p className="text-lg font-bold">S/. {previewFinal.toFixed(2)}</p>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[10px] uppercase font-bold text-muted-foreground">Saldo Pendiente</span>
-                      <p className="text-lg font-bold text-amber-600">S/. {previewBalance.toFixed(2)}</p>
-                    </div>
-                  </div>
-
                   <DialogFooter className="col-span-full pt-4">
-                    <Button type="submit" className="w-full h-12" disabled={!form.patientId}>Guardar Cita</Button>
+                    <Button type="submit" className="w-full h-12" disabled={!form.patientId || !form.doctorId}>
+                      Guardar Cita
+                    </Button>
                   </DialogFooter>
                 </form>
               </DialogContent>
@@ -359,108 +465,106 @@ function AppointmentsContent() {
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <Card className="md:col-span-1 border-none shadow-sm h-fit">
-             <CardHeader className="border-b"><CardTitle className="text-lg">Filtros de Agenda</CardTitle></CardHeader>
-             <CardContent className="pt-6 space-y-4">
-                <div className="space-y-2">
-                  <Button 
-                    variant={filterType === 'today' ? 'secondary' : 'ghost'} 
-                    className="w-full justify-start"
-                    onClick={() => { setFilterType('today'); setSpecificDate(''); }}
-                  >
-                    <Clock className="w-4 h-4 mr-2" /> Hoy
-                  </Button>
-                  <Button 
-                    variant={filterType === 'week' ? 'secondary' : 'ghost'} 
-                    className="w-full justify-start"
-                    onClick={() => { setFilterType('week'); setSpecificDate(''); }}
-                  >
-                    <CalendarIcon className="w-4 h-4 mr-2" /> Esta Semana
-                  </Button>
-                </div>
-                
-                <div className="pt-4 border-t space-y-2">
-                  <Label className="text-[10px] uppercase font-bold text-muted-foreground">Buscar por fecha específica</Label>
-                  <div className="flex gap-2">
-                    <Input 
-                      type="date" 
-                      className="h-9 text-xs" 
-                      value={specificDate} 
-                      onChange={(e) => {
-                        setSpecificDate(e.target.value);
-                        setFilterType('specific');
-                      }} 
-                    />
-                  </div>
-                </div>
-             </CardContent>
+            <CardHeader className="border-b">
+              <CardTitle className="text-lg">Filtros de Agenda</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-4">
+              <div className="space-y-2">
+                <Button variant={filterType === 'today' ? 'secondary' : 'ghost'} className="w-full justify-start" onClick={() => { setFilterType('today'); setSpecificDate(''); }}>
+                  <Clock className="w-4 h-4 mr-2" /> Hoy
+                </Button>
+                <Button variant={filterType === 'week' ? 'secondary' : 'ghost'} className="w-full justify-start" onClick={() => { setFilterType('week'); setSpecificDate(''); }}>
+                  <CalendarIcon className="w-4 h-4 mr-2" /> Esta Semana
+                </Button>
+              </div>
+
+              <div className="pt-4 border-t space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Buscar por fecha especifica</Label>
+                <Input
+                  type="date"
+                  className="h-9 text-xs"
+                  value={specificDate}
+                  onChange={(e) => {
+                    setSpecificDate(e.target.value);
+                    setFilterType('specific');
+                  }}
+                />
+              </div>
+            </CardContent>
           </Card>
 
           <Card className="md:col-span-3 border-none shadow-sm p-6 overflow-hidden">
-             <div className="mb-4 flex justify-between items-center">
-                <Badge variant="outline" className="text-primary border-primary">
-                  {filterType === 'all' ? 'Todas las citas' : 
-                   filterType === 'today' ? 'Citas de hoy' : 
-                   filterType === 'week' ? 'Citas de la semana' : 
-                   `Citas del ${specificDate ? format(parseISO(specificDate), 'dd/MM/yyyy') : ''}`}
-                </Badge>
-                <span className="text-xs text-muted-foreground">{appointments.length} resultados encontrados</span>
-             </div>
-             <div className="overflow-x-auto">
-               <Table>
-                 <TableHeader className="bg-muted/50">
-                   <TableRow>
-                     <TableHead>Fecha / Hora</TableHead>
-                     <TableHead>Paciente</TableHead>
-                     <TableHead>Tratamiento</TableHead>
-                     <TableHead>Saldos</TableHead>
-                     <TableHead>Estado</TableHead>
-                     <TableHead className="text-right">Acciones</TableHead>
-                   </TableRow>
-                 </TableHeader>
-                 <TableBody>
-                   {appointments.map(a => (
-                     <TableRow key={a.id}>
-                       <TableCell>
-                         <div className="flex flex-col">
-                           <span className="font-bold flex items-center gap-1"><Clock className="w-3 h-3" /> {a.time}</span>
-                           <span className="text-[10px] text-muted-foreground">{format(parseISO(a.date), 'dd/MM/yyyy')}</span>
-                         </div>
-                       </TableCell>
-                       <TableCell>
-                          <div className="font-medium">{a.patientName}</div>
-                          <div className="text-[10px] text-muted-foreground italic">Dr. {a.doctorName}</div>
-                       </TableCell>
-                       <TableCell className="text-xs uppercase">{a.treatmentName}</TableCell>
-                       <TableCell>
-                          <div className="font-bold">S/. {a.cost.toFixed(2)}</div>
-                          <div className={cn("text-[10px] font-bold", a.balance > 0 ? "text-amber-600" : "text-emerald-600")}>
-                            {a.balance > 0 ? `Saldo: S/. ${a.balance.toFixed(2)}` : 'Liquidado'}
-                          </div>
-                       </TableCell>
-                       <TableCell>
-                          <Select value={a.status} onValueChange={(v) => updateStatus(a.id, v as any)}>
-                            <SelectTrigger className="w-28 h-8 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Asignado">Asignado</SelectItem>
-                              <SelectItem value="Atendido">Atendido</SelectItem>
-                            </SelectContent>
-                          </Select>
-                       </TableCell>
-                       <TableCell className="text-right">
-                         <Button variant="ghost" size="icon" onClick={() => handleDeleteRequest(a.id)} className="text-destructive">
-                           <Trash2 className="w-4 h-4" />
-                         </Button>
-                       </TableCell>
-                     </TableRow>
-                   ))}
-                   {appointments.length === 0 && (
-                     <TableRow><TableCell colSpan={6} className="text-center py-10 opacity-50">No hay citas registradas para este filtro</TableCell></TableRow>
-                   )}
-                 </TableBody>
-               </Table>
-             </div>
+            <div className="mb-4 flex justify-between items-center">
+              <Badge variant="outline" className="text-primary border-primary">
+                {filterType === 'all'
+                  ? 'Todas las citas'
+                  : filterType === 'today'
+                    ? 'Citas de hoy'
+                    : filterType === 'week'
+                      ? 'Citas de la semana'
+                      : `Citas del ${specificDate ? format(parseISO(specificDate), 'dd/MM/yyyy') : ''}`}
+              </Badge>
+              <span className="text-xs text-muted-foreground">{appointments.length} resultados encontrados</span>
+            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-muted/50">
+                  <TableRow>
+                    <TableHead>Fecha / Hora</TableHead>
+                    <TableHead>Paciente</TableHead>
+                    <TableHead>Tratamiento</TableHead>
+                    <TableHead>Costo</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {appointments.map((a) => (
+                    <TableRow key={a.id}>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-bold flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> {a.time}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">{format(parseISO(a.dateIso), 'dd/MM/yyyy')}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">{a.patientName}</div>
+                        <div className="text-[10px] text-muted-foreground italic">Dr. {a.doctorName}</div>
+                      </TableCell>
+                      <TableCell className="text-xs uppercase">{a.treatmentName}</TableCell>
+                      <TableCell>
+                        <div className="font-bold">S/. {a.cost.toFixed(2)}</div>
+                      </TableCell>
+                      <TableCell>
+                        <Select value={a.status} onValueChange={(v) => updateStatus(a.id, v as 'Asignado' | 'Atendido')}>
+                          <SelectTrigger className="w-28 h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Asignado">Asignado</SelectItem>
+                            <SelectItem value="Atendido">Atendido</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" onClick={() => handleDeleteRequest(a.id)} className="text-destructive">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {appointments.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-10 opacity-50">
+                        No hay citas registradas para este filtro
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </Card>
         </div>
       </div>
@@ -469,27 +573,23 @@ function AppointmentsContent() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
-              <ShieldAlert className="w-5 h-5" /> Confirmar Eliminación
+              <ShieldAlert className="w-5 h-5" /> Confirmar Eliminacion
             </DialogTitle>
-            <DialogDescription>
-              Para eliminar esta cita, por seguridad debe ingresar su contraseña de administrador.
-            </DialogDescription>
+            <DialogDescription>Esta accion es irreversible. Escriba ELIMINAR para continuar.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="pass-confirm">Contraseña de Administrador</Label>
-              <Input 
-                id="pass-confirm" 
-                type="password" 
-                value={confirmPassword} 
-                onChange={(e) => setConfirmPassword(e.target.value)} 
-                placeholder="••••••••"
-              />
+              <Label htmlFor="delete-confirm">Confirmacion</Label>
+              <Input id="delete-confirm" value={confirmWord} onChange={(e) => setConfirmWord(e.target.value)} placeholder="ELIMINAR" />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>Cancelar</Button>
-            <Button variant="destructive" onClick={confirmDelete}>Eliminar Cita Permanentemente</Button>
+            <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete}>
+              Eliminar Cita Permanentemente
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

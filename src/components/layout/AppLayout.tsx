@@ -8,11 +8,18 @@ import { Users, UserSquare2, Stethoscope, Landmark, Activity, Calendar, Database
 import { usePathname, useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { format, isAfter, parseISO, addDays } from 'date-fns';
-import { db, PaymentMethod } from '@/lib/db';
+import { format, parseISO, differenceInCalendarDays } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+
+type PaymentMethod = {
+  id: string;
+  type: 'qr' | 'bank';
+  label: string;
+  value: string;
+  qrImage?: string;
+};
 
 function hexToHsl(hex: string) {
   let r = 0, g = 0, b = 0;
@@ -41,6 +48,26 @@ function hexToHsl(hex: string) {
   return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
 }
 
+function getReminderIntervalMs(graceDay: number): number {
+  if (graceDay <= 1) return 5 * 60 * 60 * 1000;
+  if (graceDay === 2) return 3 * 60 * 60 * 1000;
+  if (graceDay === 3) return 60 * 60 * 1000;
+  if (graceDay === 4) return 30 * 60 * 1000;
+  if (graceDay === 5) return 20 * 60 * 1000;
+  if (graceDay === 6) return 10 * 60 * 1000;
+  return 5 * 60 * 1000;
+}
+
+function getReminderIntervalLabel(graceDay: number): string {
+  if (graceDay <= 1) return '5 horas';
+  if (graceDay === 2) return '3 horas';
+  if (graceDay === 3) return '1 hora';
+  if (graceDay === 4) return '30 minutos';
+  if (graceDay === 5) return '20 minutos';
+  if (graceDay === 6) return '10 minutos';
+  return '5 minutos';
+}
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, logout, updateUser } = useAuth();
   const pathname = usePathname();
@@ -50,22 +77,28 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [isMoraReminderOpen, setIsMoraReminderOpen] = useState(false);
   const [moraCountdown, setMoraCountdown] = useState(5);
+  const overdueDays = user?.nextPaymentDate
+    ? Math.max(0, differenceInCalendarDays(new Date(), parseISO(user.nextPaymentDate)))
+    : 0;
 
   const currentStatus = user ? (() => {
     if (user.subscriptionStatus === 'blocked') return 'blocked';
+    if (user.subscriptionStatus === 'suspended') return 'suspended';
     if (!user.nextPaymentDate) return 'active';
-    const next = parseISO(user.nextPaymentDate);
-    const today = new Date();
-    if (isAfter(today, addDays(next, 10))) return 'suspended';
-    if (isAfter(today, next)) return 'overdue';
+    if (overdueDays > 7) return 'blocked';
+    if (overdueDays > 0) return 'overdue';
     return 'active';
   })() : 'active';
 
   const isAdmin = user?.role === 'admin';
-  const isClinic = user?.role === 'clinic';
+  const isClinic = ['clinic', 'clinic_owner', 'clinic_admin'].includes(user?.role || '');
   const isSuspended = currentStatus === 'suspended';
   const isBlocked = currentStatus === 'blocked';
   const isOverdue = currentStatus === 'overdue';
+  const graceDay = isOverdue ? Math.min(overdueDays, 7) : 0;
+  const subscriptionFee = typeof user?.subscriptionFee === 'number' ? user.subscriptionFee : 50;
+  const reminderIntervalMs = graceDay > 0 ? getReminderIntervalMs(graceDay) : 0;
+  const reminderIntervalLabel = graceDay > 0 ? getReminderIntervalLabel(graceDay) : '';
 
   useEffect(() => {
     if (user) {
@@ -83,22 +116,25 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }, [pathname, user, isAdmin, router]);
 
   useEffect(() => {
-    if (user && (user.role === 'clinic' || user.role === 'doctor')) {
-      db.getAll<PaymentMethod>('payment_methods').then(setPaymentMethods);
-    }
-  }, [user]);
+    setPaymentMethods([]);
+  }, [user?.id]);
 
   useEffect(() => {
-    if (isOverdue && !isAdmin && user) {
+    if (!isOverdue || isAdmin || !user?.id || reminderIntervalMs <= 0) {
+      setIsMoraReminderOpen(false);
+      return;
+    }
+
+    setIsMoraReminderOpen(true);
+    setMoraCountdown(5);
+
+    const interval = setInterval(() => {
       setIsMoraReminderOpen(true);
       setMoraCountdown(5);
-      const interval = setInterval(() => {
-        setIsMoraReminderOpen(true);
-        setMoraCountdown(5);
-      }, 5 * 60 * 1000);
-      return () => clearInterval(interval);
-    }
-  }, [isOverdue, isAdmin, user]);
+    }, reminderIntervalMs);
+
+    return () => clearInterval(interval);
+  }, [isOverdue, isAdmin, user?.id, reminderIntervalMs]);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -111,31 +147,40 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }, [isMoraReminderOpen, moraCountdown]);
 
   useEffect(() => {
-    if (user?.primaryColor) {
-      const hslValue = hexToHsl(user.primaryColor);
-      const styleId = 'dynamic-brand-color';
-      let styleElement = document.getElementById(styleId);
-      if (!styleElement) {
-        styleElement = document.createElement('style');
-        styleElement.id = styleId;
-        document.head.appendChild(styleElement);
-      }
-      styleElement.innerHTML = `
-        :root, .dark {
-          --primary: ${hslValue} !important;
-          --ring: ${hslValue} !important;
-          --sidebar-primary: ${hslValue} !important;
-          --sidebar-accent-foreground: ${hslValue} !important;
-        }
-        [data-sidebar="menu-button"][data-active="true"] {
-          background-color: hsla(${hslValue}, 0.1) !important;
-          border-left: 3px solid hsl(${hslValue}) !important;
-          border-radius: 0 0.5rem 0.5rem 0 !important;
-          color: hsl(${hslValue}) !important;
-        }
-      `;
+    const styleId = 'dynamic-brand-color';
+    const existing = document.getElementById(styleId);
+
+    if (!user?.primaryColor) {
+      existing?.remove();
+      return;
     }
-  }, [user?.primaryColor]);
+
+    const hslValue = hexToHsl(user.primaryColor);
+    const styleElement = existing ?? document.createElement('style');
+    styleElement.id = styleId;
+    styleElement.innerHTML = `
+      :root, .dark {
+        --primary: ${hslValue} !important;
+        --ring: ${hslValue} !important;
+        --sidebar-primary: ${hslValue} !important;
+        --sidebar-accent-foreground: ${hslValue} !important;
+      }
+      [data-sidebar="menu-button"][data-active="true"] {
+        background-color: hsla(${hslValue}, 0.1) !important;
+        border-left: 3px solid hsl(${hslValue}) !important;
+        border-radius: 0 0.5rem 0.5rem 0 !important;
+        color: hsl(${hslValue}) !important;
+      }
+    `;
+
+    if (!existing) {
+      document.head.appendChild(styleElement);
+    }
+
+    return () => {
+      document.getElementById(styleId)?.remove();
+    };
+  }, [user?.primaryColor, user?.id, user?.clinicId, user?.clinic_id]);
 
   useEffect(() => {
     const applyTheme = (theme: string) => {
@@ -158,9 +203,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   const toggleTheme = () => {
-    const newTheme = user.theme === 'dark' ? 'light' : 'dark';
-    const updatedUser = { ...user, theme: newTheme };
-    db.put('users', updatedUser);
+    const newTheme: 'light' | 'dark' = user.theme === 'dark' ? 'light' : 'dark';
+    const updatedUser: typeof user = { ...user, theme: newTheme };
     updateUser(updatedUser);
   };
 
@@ -256,7 +300,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   <div className="space-y-2">
                     <p className="flex justify-between text-[11px] font-bold">
                       <span className="text-muted-foreground">ABONO:</span>
-                      <span className="text-primary">S/. {user.subscriptionFee?.toFixed(2)}</span>
+                      <span className="text-primary">S/. {subscriptionFee.toFixed(2)}</span>
                     </p>
                     {user.nextPaymentDate && (
                       <p className="flex justify-between text-[11px] font-bold">
@@ -295,7 +339,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               {isOverdue && !isAdmin && !isSuspended && (
                 <div className="bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 px-6 py-2 rounded-full flex items-center gap-4 animate-pulse shadow-lg shadow-amber-500/10">
                   <AlertTriangle className="w-5 h-5 text-amber-600" />
-                  <span className="text-[11px] font-black uppercase tracking-tight">Periodo de gracia activo. Realice su pago hoy para evitar suspensión.</span>
+                  <span className="text-[11px] font-black uppercase tracking-tight">Día {graceDay} de 7 en gracia. Avisos cada {reminderIntervalLabel}. Realice su pago para evitar bloqueo.</span>
                   <Button variant="ghost" size="sm" className="h-8 text-[11px] font-black underline p-0 hover:bg-transparent ml-4 uppercase tracking-widest" onClick={() => setIsPayModalOpen(true)}>Pagar ahora</Button>
                 </div>
               )}
@@ -305,15 +349,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 {user.theme === 'dark' ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />}
               </Button>
               <div className="h-10 w-[1px] bg-slate-100 dark:bg-slate-800" />
-              <div className="flex items-center gap-4 px-2 group cursor-pointer" onClick={() => window.location.href = '/profile'}>
+              <Link href="/profile" className="flex items-center gap-4 px-2 group cursor-pointer">
                 <div className="text-right hidden sm:block">
                   <p className="text-sm font-black text-slate-900 dark:text-white leading-none">{user.fullName || user.username}</p>
                   <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-1">{isAdmin ? 'Master Admin' : user.role}</p>
                 </div>
                 <div className="w-12 h-12 rounded-2xl bg-primary flex items-center justify-center text-white text-lg font-black shadow-lg group-hover:scale-110 transition-transform">
-                  {(user.fullName || user.username).charAt(0).toUpperCase()}
+                  {(user.fullName || user.username || 'U').charAt(0).toUpperCase()}
                 </div>
-              </div>
+              </Link>
             </div>
           </header>
           <main className="flex-1 overflow-auto p-10 relative scrollbar-hide">
@@ -441,16 +485,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <div className="space-y-3">
                 <DialogTitle className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Aviso de Mora</DialogTitle>
                 <DialogDescription className="text-lg font-bold text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Su suscripción se encuentra vencida. Por favor regularice su pago para evitar la suspensión inmediata.
+                  Su suscripción está vencida. Se encuentra en el día {graceDay} de 7 de periodo de gracia. Regularice su pago para evitar el bloqueo.
                 </DialogDescription>
               </div>
               <div className="bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-100 dark:border-amber-800 p-8 rounded-[2rem] flex items-center justify-between shadow-inner">
                 <div className="text-left">
                   <p className="text-[11px] font-black text-amber-800 dark:text-amber-300 uppercase tracking-widest">Monto Pendiente</p>
-                  <p className="text-4xl font-black text-amber-600 dark:text-amber-500 mt-1">S/. {user.subscriptionFee?.toFixed(2)}</p>
+                  <p className="text-4xl font-black text-amber-600 dark:text-amber-500 mt-1">S/. {subscriptionFee.toFixed(2)}</p>
+                  <p className="text-[11px] font-black text-amber-700 dark:text-amber-300 uppercase tracking-widest mt-3">Recordatorio cada {reminderIntervalLabel}</p>
                 </div>
                 <div className="text-right">
-                  <Badge className="bg-amber-500 font-black text-[10px] px-4 py-1.5 uppercase tracking-tighter">EN MORA</Badge>
+                  <Badge className="bg-amber-500 font-black text-[10px] px-4 py-1.5 uppercase tracking-tighter">DÍA {graceDay}/7</Badge>
                 </div>
               </div>
               <DialogFooter className="flex flex-col sm:flex-row gap-4 pt-6 border-t items-center">
@@ -460,6 +505,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                     {moraCountdown > 0 ? `Disponible en ${moraCountdown}s` : 'Ya puede continuar'}
                   </span>
                 </div>
+                <Button onClick={() => {
+                  setIsMoraReminderOpen(false);
+                  setIsPayModalOpen(true);
+                }} className="w-full sm:w-56 h-14 font-black rounded-2xl shadow-xl shadow-primary/10 uppercase tracking-widest transition-transform active:scale-95">
+                  Ir a pagar ahora
+                </Button>
                 <Button onClick={() => setIsMoraReminderOpen(false)} disabled={moraCountdown > 0} className="w-full sm:w-56 h-14 font-black rounded-2xl shadow-xl shadow-amber-500/10 uppercase tracking-widest transition-transform active:scale-95">
                   Entendido
                 </Button>

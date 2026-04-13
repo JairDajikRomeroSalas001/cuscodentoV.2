@@ -1,27 +1,48 @@
-import type {Metadata} from 'next';
+import type { Metadata } from 'next';
+import Script from 'next/script';
+import { headers } from 'next/headers';
+import { PT_Sans } from 'next/font/google';
 import './globals.css';
-import { Toaster } from "@/components/ui/toaster";
+import { Toaster } from '@/components/ui/toaster';
+import { AuthProvider } from '@/hooks/use-auth';
+
+const ptSans = PT_Sans({
+  subsets: ['latin'],
+  weight: ['400', '700'],
+  display: 'swap',
+  variable: '--font-body',
+});
 
 export const metadata: Metadata = {
   title: 'KuskoDento - Gestión Odontológica',
   description: 'Sistema de gestión odontológica local para Cusco, Perú',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const requestHeaders = await headers();
+  const nonce = requestHeaders.get('x-nonce') || undefined;
+
   return (
-    <html lang="es">
+    <html lang="es" className={ptSans.variable}>
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&display=swap" rel="stylesheet" />
+        <style nonce={nonce}>{`:root { color-scheme: light; }`}</style>
       </head>
       <body className="font-body antialiased bg-background text-foreground">
-        {children}
-        <Toaster />
+        <Script
+          id="csp-nonce-bootstrap"
+          nonce={nonce}
+          strategy="beforeInteractive"
+        >
+          {`window.__CSP_NONCE__ = '${nonce || ''}';`}
+        </Script>
+        <AuthProvider>
+          {children}
+          <Toaster />
+        </AuthProvider>
       </body>
     </html>
   );

@@ -1,168 +1,287 @@
-
 "use client";
 
-import { useState, useEffect, createContext, useContext } from 'react';
-import { useRouter } from 'next/navigation';
-import { db, User } from '@/lib/db';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+
+type Role = 'admin' | 'clinic' | 'doctor' | 'assistant' | 'technician' | string;
+type ThemePreference = 'light' | 'dark' | 'system';
+
+const THEME_STORAGE_PREFIX = 'kuskodento_theme';
+const DEFAULT_SUBSCRIPTION_FEE = 50;
+
+export interface AuthUser {
+  id: string;
+  email?: string;
+  username?: string;
+  fullName?: string;
+  full_name?: string;
+  role: Role;
+  clinicId?: string;
+  clinic_id?: string;
+  subscriptionStatus?: 'active' | 'suspended' | 'blocked';
+  theme?: 'light' | 'dark' | 'system';
+  primaryColor?: string;
+  brandName?: string;
+  slogan?: string;
+  nextPaymentDate?: string;
+  subscriptionFee?: number;
+  photo?: string;
+}
 
 interface AuthContextType {
-  user: User | null;
-  login: (username: string, password: string) => Promise<{ success: boolean; message?: string }>;
-  logout: () => void;
-  updateUser: (updatedUser: User) => void;
+  user: AuthUser | null;
+  login: (identifier: string, password: string, clinicId?: string) => Promise<{ success: boolean; message?: string }>;
+  logout: () => Promise<void>;
+  updateUser: (updatedUser: AuthUser) => void;
   isLoading: boolean;
   lockoutUntil: number;
 }
 
+interface MeResponse {
+  success: boolean;
+  data?: {
+    user: {
+      id: string;
+      email: string | null;
+      full_name: string | null;
+      role: string;
+      clinic_id: string;
+    };
+    clinic: {
+      id: string;
+      name: string;
+      domain: string;
+      subscription_fee?: number | null;
+      subscription_status?: 'active' | 'suspended' | 'blocked';
+      theme?: string;
+      logo_url?: string | null;
+      primary_color?: string | null;
+      slogan?: string | null;
+      next_payment_date?: string | null;
+    };
+  };
+  error?: string;
+}
+
+type AuthPayload = {
+  user: {
+    id: string;
+    email: string | null;
+    full_name: string | null;
+    role: string;
+    clinic_id: string;
+  };
+  clinic: {
+    id: string;
+    name: string;
+    domain: string;
+    subscription_fee?: number | null;
+    subscription_status?: 'active' | 'suspended' | 'blocked';
+    theme?: string;
+    logo_url?: string | null;
+    primary_color?: string | null;
+    slogan?: string | null;
+    next_payment_date?: string | null;
+  };
+};
+
+function isThemePreference(value: string | null | undefined): value is ThemePreference {
+  return value === 'light' || value === 'dark' || value === 'system';
+}
+
+function getClinicRef(user: Pick<AuthUser, 'clinicId' | 'clinic_id'>): string | undefined {
+  return user.clinicId || user.clinic_id;
+}
+
+function getThemeStorageKey(userId: string, clinicId: string): string {
+  return `${THEME_STORAGE_PREFIX}:${clinicId}:${userId}`;
+}
+
+function getStoredTheme(userId: string, clinicId: string): ThemePreference | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const saved = window.localStorage.getItem(getThemeStorageKey(userId, clinicId));
+  return isThemePreference(saved) ? saved : undefined;
+}
+
+function persistThemePreference(user: Pick<AuthUser, 'id' | 'clinicId' | 'clinic_id' | 'theme'>): void {
+  if (typeof window === 'undefined') return;
+  const clinicRef = getClinicRef(user);
+  if (!clinicRef || !user.id || !isThemePreference(user.theme)) return;
+
+  window.localStorage.setItem(getThemeStorageKey(user.id, clinicRef), user.theme);
+}
+
+function extractAuthPayload(body: unknown): AuthPayload | null {
+  if (!body || typeof body !== 'object') return null;
+
+  const candidate = (body as { data?: unknown }).data ?? body;
+  if (!candidate || typeof candidate !== 'object') return null;
+
+  const payload = candidate as Partial<AuthPayload>;
+  if (!payload.user || !payload.clinic) return null;
+
+  return payload as AuthPayload;
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Credenciales Maestras solicitadas
-const MASTER_ADMINS = [
-  { username: 'admin1', password: 'admin1', fullName: 'Administrador Principal' },
-  { username: 'admin2', password: 'admin2', fullName: 'Administrador de Soporte' }
-];
+function normalizeUser(payload: NonNullable<MeResponse['data']>): AuthUser {
+  const themeFromPayload: ThemePreference =
+    payload.clinic.theme === 'dark' || payload.clinic.theme === 'light' || payload.clinic.theme === 'system'
+      ? payload.clinic.theme
+      : 'light';
 
-const MAX_ATTEMPTS = 3;
-const LOCKOUT_MS = 2 * 60 * 1000; // 2 minutos de bloqueo
+  const storedTheme = getStoredTheme(payload.user.id, payload.user.clinic_id);
+
+  return {
+    id: payload.user.id,
+    email: payload.user.email ?? undefined,
+    username: payload.user.email ?? undefined,
+    fullName: payload.user.full_name ?? undefined,
+    full_name: payload.user.full_name ?? undefined,
+    role: payload.user.role,
+    clinicId: payload.user.clinic_id,
+    clinic_id: payload.user.clinic_id,
+    subscriptionStatus: payload.clinic.subscription_status ?? 'active',
+    theme: storedTheme ?? themeFromPayload,
+    primaryColor: payload.clinic.primary_color ?? undefined,
+    brandName: payload.clinic.name,
+    slogan: payload.clinic.slogan ?? payload.clinic.domain,
+    subscriptionFee:
+      typeof payload.clinic.subscription_fee === 'number'
+        ? payload.clinic.subscription_fee
+        : DEFAULT_SUBSCRIPTION_FEE,
+    photo: payload.clinic.logo_url ?? undefined,
+    nextPaymentDate: payload.clinic.next_payment_date ?? undefined,
+  };
+}
+
+async function fetchMe(): Promise<AuthUser | null> {
+  const response = await fetch('/api/auth/me', {
+    method: 'GET',
+    credentials: 'include',
+    cache: 'no-store',
+  });
+
+  if (!response.ok) return null;
+
+  const body = (await response.json()) as MeResponse | AuthPayload;
+  const payload = extractAuthPayload(body);
+  if (!payload) return null;
+  return normalizeUser(payload);
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const parentContext = useContext(AuthContext);
+  if (parentContext) {
+    return <>{children}</>;
+  }
+
+  return <AuthProviderRoot>{children}</AuthProviderRoot>;
+}
+
+function AuthProviderRoot({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [lockoutUntil, setLockoutUntil] = useState<number>(0);
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
+    let mounted = true;
+
+    if (pathname === '/login') {
+      setUser(null);
+      setIsLoading(false);
+      return () => {
+        mounted = false;
+      };
+    }
+
     const initAuth = async () => {
-      const session = localStorage.getItem('kd_session');
-      if (session) {
-        try {
-          const parsed = JSON.parse(session);
-          setUser(parsed);
-        } catch (e) {
-          localStorage.removeItem('kd_session');
-        }
+      try {
+        const me = await fetchMe();
+        if (mounted) setUser(me);
+      } catch {
+        if (mounted) setUser(null);
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+
+    initAuth();
+
+    return () => {
+      mounted = false;
+    };
+  }, [pathname]);
+
+  const login = useCallback(async (identifier: string, password: string, clinicId?: string) => {
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          identifier,
+          password,
+          ...(clinicId?.trim() ? { clinic_id: clinicId.trim() } : {}),
+        }),
+      });
+
+      const body = (await response.json()) as MeResponse | AuthPayload;
+      const payload = extractAuthPayload(body);
+
+      if (!response.ok || !payload) {
+        return {
+          success: false,
+          message: (body as { error?: string })?.error || 'No fue posible iniciar sesion',
+        };
       }
 
-      const storedLockout = localStorage.getItem('kd_lockout_until');
-      if (storedLockout) {
-        const until = parseInt(storedLockout);
-        if (until > Date.now()) {
-          setLockoutUntil(until);
-        } else {
-          localStorage.removeItem('kd_lockout_until');
-          localStorage.removeItem('kd_failed_attempts');
-        }
-      }
-      setIsLoading(false);
-    };
-    initAuth();
+      const normalized = normalizeUser(payload);
+      persistThemePreference(normalized);
+      setUser(normalized);
+      return { success: true };
+    } catch {
+      return {
+        success: false,
+        message: 'Error de red al iniciar sesion',
+      };
+    }
   }, []);
 
-  const login = async (username: string, password: string) => {
-    const now = Date.now();
-    
-    // Verificar si el sistema está bloqueado temporalmente
-    if (now < lockoutUntil) {
-      const remaining = Math.ceil((lockoutUntil - now) / 1000);
-      return { 
-        success: false, 
-        message: `Sistema bloqueado. Reintente en ${remaining} segundos.` 
-      };
+  const logout = useCallback(async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch {
+      // no-op
     }
 
-    // 1. Verificar si es un Administrador Maestro (Credenciales fijas)
-    const masterMatch = MASTER_ADMINS.find(ma => ma.username === username && ma.password === password);
-    let authenticatedUser: User | null = null;
-
-    if (masterMatch) {
-      authenticatedUser = { 
-        id: `admin-${username}`, 
-        username: masterMatch.username, 
-        password: masterMatch.password,
-        role: 'admin',
-        fullName: masterMatch.fullName,
-        status: 'active',
-        lastLogin: new Date().toISOString(),
-        subscriptionStatus: 'active'
-      };
-      // Persistir el admin en la base de datos local para reportes
-      await db.put('users', authenticatedUser);
-    } 
-    else {
-      // 2. Buscar en la base de datos de consultorios y personal
-      const allUsers = await db.getAll<User>('users');
-      const foundUser = allUsers.find(u => u.username === username && u.password === password);
-      
-      if (foundUser) {
-        // Protección: Solo los masters pueden loguearse como admin si no están en la lista fija
-        if (foundUser.role === 'admin' && !MASTER_ADMINS.some(m => m.username === username)) {
-          return { success: false, message: 'Acceso Denegado: Credenciales no autorizadas.' };
-        }
-
-        if (foundUser.subscriptionStatus === 'blocked') {
-          return { success: false, message: 'Cuenta Bloqueada. Contacte a soporte.' };
-        }
-        
-        authenticatedUser = { 
-          ...foundUser, 
-          status: 'active', 
-          lastLogin: new Date().toISOString() 
-        };
-        
-        await db.put('users', authenticatedUser);
-      }
-    }
-
-    if (authenticatedUser) {
-      // Éxito en el login
-      setUser(authenticatedUser);
-      localStorage.setItem('kd_session', JSON.stringify(authenticatedUser));
-      localStorage.removeItem('kd_failed_attempts');
-      localStorage.removeItem('kd_lockout_until');
-      setLockoutUntil(0);
-      return { success: true };
-    }
-    
-    // Gestión de intentos fallidos y bloqueo
-    const attempts = parseInt(localStorage.getItem('kd_failed_attempts') || '0') + 1;
-    localStorage.setItem('kd_failed_attempts', attempts.toString());
-
-    if (attempts >= MAX_ATTEMPTS) {
-      const lockUntil = Date.now() + LOCKOUT_MS;
-      localStorage.setItem('kd_lockout_until', lockUntil.toString());
-      setLockoutUntil(lockUntil);
-      return { 
-        success: false, 
-        message: 'Demasiados intentos fallidos. Bloqueo de seguridad activado por 2 min.' 
-      };
-    }
-
-    return { 
-      success: false, 
-      message: `Credenciales incorrectas. Intento ${attempts} de ${MAX_ATTEMPTS}.` 
-    };
-  };
-
-  const logout = async () => {
-    if (user) {
-      const updatedUser = { ...user, status: 'inactive' };
-      await db.put('users', updatedUser);
-    }
     setUser(null);
-    localStorage.removeItem('kd_session');
     router.push('/login');
-  };
+  }, [router]);
 
-  const updateUser = (updatedUser: User) => {
+  const updateUser = useCallback((updatedUser: AuthUser) => {
+    persistThemePreference(updatedUser);
     setUser(updatedUser);
-    localStorage.setItem('kd_session', JSON.stringify(updatedUser));
-  };
+  }, []);
 
-  return (
-    <AuthContext.Provider value={{ user, login, logout, updateUser, isLoading, lockoutUntil }}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({
+      user,
+      login,
+      logout,
+      updateUser,
+      isLoading,
+      lockoutUntil: 0,
+    }),
+    [user, login, logout, updateUser, isLoading]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export const useAuth = () => {

@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { db, InventoryItem } from '@/lib/db';
+import { db, InventoryItem } from '@/lib/legacy-data';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
@@ -25,7 +25,7 @@ function InventoryContent() {
   const [isOpen, setIsOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   
-  const clinicId = user?.role === 'clinic' ? user.id : user?.clinicId;
+  const clinicId = user?.clinicId || user?.clinic_id;
 
   const [form, setForm] = useState({
     name: '',
@@ -41,30 +41,44 @@ function InventoryContent() {
 
   const load = async () => {
     if (!user || !clinicId) return;
-    const all = await db.getAll<InventoryItem>('inventory');
-    setItems(all.filter(i => i.clinicId === clinicId));
+    try {
+      const all = await db.getAll<InventoryItem>('inventory');
+      setItems(all.filter(i => i.clinicId === clinicId));
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Error al cargar inventario',
+        description: error instanceof Error ? error.message : 'No se pudo cargar el inventario.',
+      });
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!clinicId) return;
 
-    const newItem: InventoryItem = {
-      id: editingItem ? editingItem.id : crypto.randomUUID(),
+    const payload = {
+      ...(editingItem ? { id: editingItem.id } : {}),
       name: form.name,
       category: form.category,
-      quantity: parseInt(form.quantity),
-      minQuantity: parseInt(form.minQuantity),
+      quantity: Number(form.quantity || 0),
+      minQuantity: Number(form.minQuantity || 0),
       unit: form.unit,
-      lastUpdated: new Date().toISOString(),
-      clinicId: clinicId
     };
 
-    await db.put('inventory', newItem);
-    setIsOpen(false);
-    resetForm();
-    toast({ title: editingItem ? "Insumo Actualizado" : "Insumo Registrado" });
-    load();
+    try {
+      await db.put('inventory', payload);
+      setIsOpen(false);
+      resetForm();
+      toast({ title: editingItem ? "Insumo Actualizado" : "Insumo Registrado" });
+      load();
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo guardar',
+        description: error instanceof Error ? error.message : 'Error al guardar el insumo.',
+      });
+    }
   };
 
   const resetForm = () => {
@@ -92,9 +106,17 @@ function InventoryContent() {
 
   const handleDelete = async (id: string) => {
     if (confirm('¿Desea eliminar este insumo del inventario?')) {
-      await db.delete('inventory', id);
-      toast({ title: "Eliminado del inventario" });
-      load();
+      try {
+        await db.delete('inventory', id);
+        toast({ title: "Eliminado del inventario" });
+        load();
+      } catch (error) {
+        toast({
+          variant: 'destructive',
+          title: 'No se pudo eliminar',
+          description: error instanceof Error ? error.message : 'Error al eliminar el insumo.',
+        });
+      }
     }
   };
 
@@ -182,7 +204,7 @@ function InventoryContent() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card className="border-none shadow-sm bg-white border-l-4 border-primary">
+          <Card className="border-none shadow-sm bg-white dark:bg-slate-900 border-l-4 border-primary">
             <CardHeader className="pb-2">
               <CardTitle className="text-[10px] uppercase font-bold text-muted-foreground">Total Insumos</CardTitle>
             </CardHeader>
@@ -190,7 +212,7 @@ function InventoryContent() {
               <div className="text-3xl font-bold">{items.length}</div>
             </CardContent>
           </Card>
-          <Card className="border-none shadow-sm bg-white border-l-4 border-red-500">
+          <Card className="border-none shadow-sm bg-white dark:bg-slate-900 border-l-4 border-red-500">
             <CardHeader className="pb-2">
               <CardTitle className="text-[10px] uppercase font-bold text-muted-foreground text-red-600">Stock Crítico</CardTitle>
             </CardHeader>
@@ -222,7 +244,7 @@ function InventoryContent() {
           </CardHeader>
           <CardContent className="p-0">
             <Table>
-              <TableHeader className="bg-slate-50">
+              <TableHeader className="bg-slate-50 dark:bg-slate-800/80">
                 <TableRow>
                   <TableHead className="font-bold">Insumo / Material</TableHead>
                   <TableHead className="font-bold">Categoría</TableHead>
@@ -235,13 +257,13 @@ function InventoryContent() {
                 {filteredItems.map((item) => {
                   const isLowStock = item.quantity <= item.minQuantity;
                   return (
-                    <TableRow key={item.id} className="hover:bg-slate-50 transition-colors">
+                    <TableRow key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
                       <TableCell>
-                        <p className="font-bold text-slate-800">{item.name}</p>
+                        <p className="font-bold text-slate-800 dark:text-slate-100">{item.name}</p>
                         <p className="text-[10px] text-muted-foreground uppercase font-medium">Actualizado: {new Date(item.lastUpdated).toLocaleDateString('es-PE')}</p>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="text-[10px] font-bold bg-slate-50">{item.category}</Badge>
+                        <Badge variant="outline" className="text-[10px] font-bold bg-slate-50 dark:bg-slate-800/80 dark:text-slate-100">{item.category}</Badge>
                       </TableCell>
                       <TableCell>
                         <span className={cn("text-lg font-black", isLowStock ? "text-red-600" : "text-emerald-600")}>
@@ -265,7 +287,7 @@ function InventoryContent() {
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:bg-primary/5" onClick={() => openEdit(item)}>
                             <Edit2 className="w-4 h-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-red-50" onClick={() => handleDelete(item.id)}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-red-50 dark:hover:bg-red-950/40" onClick={() => handleDelete(item.id)}>
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
@@ -275,7 +297,7 @@ function InventoryContent() {
                 })}
                 {filteredItems.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-16 text-muted-foreground bg-slate-50/30">
+                    <TableCell colSpan={5} className="text-center py-16 text-muted-foreground bg-slate-50/30 dark:bg-slate-800/40">
                       <Boxes className="w-12 h-12 mx-auto mb-4 opacity-10" />
                       <p className="font-bold uppercase tracking-widest text-xs">No hay insumos registrados</p>
                     </TableCell>

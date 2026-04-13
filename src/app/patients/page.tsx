@@ -1,140 +1,265 @@
-
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { db, Patient, User } from '@/lib/db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import { Card } from '@/components/ui/card';
-import { UserPlus, Search, Eye, Camera, Trash2, ShieldAlert } from 'lucide-react';
+import { UserPlus, Search, Eye, Trash2, ShieldAlert, Edit2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 
+type ApiPatient = {
+  id: string;
+  dni: string;
+  full_name: string;
+};
+
+function splitName(fullName: string) {
+  const normalized = fullName.trim();
+  if (!normalized) return { names: '', lastNames: '' };
+  const chunks = normalized.split(/\s+/);
+  if (chunks.length === 1) return { names: chunks[0], lastNames: '' };
+  return {
+    names: chunks.slice(0, -1).join(' '),
+    lastNames: chunks[chunks.length - 1],
+  };
+}
+
+async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers || {}),
+    },
+  });
+
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body?.error || 'Error de API');
+  }
+
+  // Compatibilidad con respuestas planas (apiOk) y con envoltura { success, data }.
+  if (typeof body === 'object' && body !== null && 'success' in body) {
+    const wrapped = body as { success?: boolean; data?: T; error?: string };
+    if (!wrapped.success) {
+      throw new Error(wrapped.error || 'Error de API');
+    }
+    return (wrapped.data as T) ?? (body as T);
+  }
+
+  return body as T;
+}
+
 function PatientsContent() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [patients, setPatients] = useState<ApiPatient[]>([]);
   const [search, setSearch] = useState('');
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  
-  // Security states for deletion
+  const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState<string | null>(null);
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [confirmWord, setConfirmWord] = useState('');
 
-  const clinicId = user?.role === 'clinic' ? user.id : user?.clinicId;
-
-  const [newPatient, setNewPatient] = useState<Partial<Patient>>({
+  const [newPatient, setNewPatient] = useState({
+    id: undefined as string | undefined,
     dni: '',
     names: '',
     lastNames: '',
     email: '',
     phone: '',
     address: '',
-    underTreatment: false,
-    proneToBleeding: false,
-    allergicToMeds: false,
-    allergiesDetail: '',
-    hypertensive: false,
-    diabetic: false,
-    pregnant: false,
     consultationReason: '',
-    diagnostic: '',
     medicalObservations: '',
     attendedBy: '',
   });
 
+  const [staffOptions, setStaffOptions] = useState<Array<{ id: string; label: string }>>([]);
+
   useEffect(() => {
-    if (user) loadData();
+    if (user) {
+      loadData();
+
+      const loadStaff = async () => {
+        try {
+          const data = await apiRequest<{ items: Array<{ id: string; fullName?: string; username?: string; role?: string }> }>('/api/admin/users');
+          const items = (data && (data as any).items) || [];
+          const options = (items as any[])
+            .filter((i) => i && i.role !== 'clinic')
+            .map((i) => ({ id: i.id, label: i.fullName || i.username || i.id }));
+
+          if (options.length === 0) {
+            setStaffOptions([
+              { id: user?.id || 'self', label: user?.fullName || user?.full_name || user?.email || 'Odontologo' },
+            ]);
+          } else {
+            setStaffOptions(options);
+          }
+        } catch (err) {
+          setStaffOptions([
+            { id: user?.id || 'self', label: user?.fullName || user?.full_name || user?.email || 'Odontologo' },
+          ]);
+        }
+      };
+
+      void loadStaff();
+    }
   }, [user]);
 
   const loadData = async () => {
-    if (!user || !clinicId) return;
-    const allP = await db.getAll<Patient>('patients');
-    const allU = await db.getAll<User>('users');
-    
-    setPatients(allP.filter(p => p.clinicId === clinicId));
-    setUsers(allU.filter(u => u.id === clinicId || u.clinicId === clinicId));
+    try {
+      const data = await apiRequest<{ items: ApiPatient[]; total: number; page: number; limit: number; totalPages: number }>(
+        '/api/patients?limit=200&view=summary'
+      );
+      setPatients(data.items || []);
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo cargar pacientes',
+        description: error instanceof Error ? error.message : 'Error inesperado',
+      });
+    }
   };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clinicId) return;
 
-    const dniFinal = newPatient.dni?.trim() === '' ? '00000000' : newPatient.dni;
-    
-    const patient: Patient = {
-      ...(newPatient as Patient),
-      id: crypto.randomUUID(),
-      dni: dniFinal || '00000000',
-      photo: photoPreview || undefined,
-      registrationDate: new Date().toLocaleDateString('es-PE'),
-      clinicId: clinicId
-    };
+    const dniFinal = newPatient.dni.trim() || '00000000';
+    const fullName = `${newPatient.names} ${newPatient.lastNames}`.trim();
 
-    await db.put('patients', patient);
-    setIsRegisterOpen(false);
-    resetForm();
-    toast({ title: "Paciente Registrado", description: "La historia clínica ha sido creada con éxito." });
-    loadData();
+    try {
+      if (editingPatientId) {
+        await apiRequest(`/api/patients/${editingPatientId}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            dni: dniFinal,
+            full_name: fullName,
+            first_name: newPatient.names || undefined,
+            last_name: newPatient.lastNames || undefined,
+            phone: newPatient.phone,
+            address: newPatient.address,
+            email: newPatient.email || undefined,
+            registered_by: newPatient.attendedBy || undefined,
+            medical_observations: [newPatient.consultationReason, newPatient.medicalObservations]
+              .filter(Boolean)
+              .join(' | ') || undefined,
+          }),
+        });
+      } else {
+        await apiRequest('/api/patients', {
+          method: 'POST',
+          body: JSON.stringify({
+            dni: dniFinal,
+            full_name: fullName,
+            first_name: newPatient.names || undefined,
+            last_name: newPatient.lastNames || undefined,
+            phone: newPatient.phone,
+            address: newPatient.address,
+            email: newPatient.email || undefined,
+            registered_by: newPatient.attendedBy || undefined,
+            medical_observations: [newPatient.consultationReason, newPatient.medicalObservations]
+              .filter(Boolean)
+              .join(' | ') || undefined,
+          }),
+        });
+      }
+
+      setIsRegisterOpen(false);
+      resetForm();
+      setEditingPatientId(null);
+      toast({ title: 'Paciente registrado', description: 'La historia clinica fue creada con exito.' });
+      loadData();
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo registrar',
+        description: error instanceof Error ? error.message : 'Error inesperado',
+      });
+    }
   };
 
   const resetForm = () => {
     setNewPatient({
-      dni: '', names: '', lastNames: '', email: '', phone: '', address: '',
-      underTreatment: false, proneToBleeding: false, allergicToMeds: false,
-      allergiesDetail: '', hypertensive: false, diabetic: false, pregnant: false,
-      consultationReason: '', diagnostic: '', medicalObservations: '', attendedBy: '',
+      id: undefined,
+      dni: '',
+      names: '',
+      lastNames: '',
+      email: '',
+      phone: '',
+      address: '',
+      consultationReason: '',
+      medicalObservations: '',
+      attendedBy: '',
     });
-    setPhotoPreview(null);
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => setPhotoPreview(reader.result as string);
-      reader.readAsDataURL(file);
+  const openEditModal = async (patientId: string) => {
+    try {
+      const data = await apiRequest<any>(`/api/patients/${patientId}`);
+      // Map returned patient into form
+      setNewPatient({
+        id: data.id,
+        dni: data.dni || '',
+        names: data.first_name || '',
+        lastNames: data.last_name || '',
+        email: data.email || '',
+        phone: data.phone || '',
+        address: data.address || '',
+        consultationReason: (data.medical_observations || '').split('|')[0]?.trim() || '',
+        medicalObservations: (data.medical_observations || '').split('|').slice(1).join(' | ').trim() || '',
+        attendedBy: data.registered_by || '',
+      });
+      setEditingPatientId(patientId);
+      setIsRegisterOpen(true);
+    } catch (err) {
+      toast({ variant: 'destructive', title: 'No se pudo cargar paciente', description: (err as Error).message || 'Error' });
     }
   };
 
   const handleDeleteRequest = (id: string) => {
     setPatientToDelete(id);
-    setConfirmPassword('');
+    setConfirmWord('');
     setIsDeleteOpen(true);
   };
 
   const confirmDelete = async () => {
-    if (!user) return;
-    
-    // SECURITY: Validate password for deletion
-    if (user.password === confirmPassword) {
-      if (patientToDelete) {
-        await db.delete('patients', patientToDelete);
-        setIsDeleteOpen(false);
-        setPatientToDelete(null);
-        toast({ title: "Registro Eliminado", variant: "destructive" });
-        loadData();
-      }
-    } else {
-      toast({ variant: 'destructive', title: 'Error de Seguridad', description: 'Contraseña incorrecta. El registro no fue eliminado.' });
+    if (!patientToDelete) return;
+
+    if (confirmWord.trim().toUpperCase() !== 'ELIMINAR') {
+      toast({
+        variant: 'destructive',
+        title: 'Confirmacion invalida',
+        description: 'Escriba ELIMINAR para confirmar la eliminacion.',
+      });
+      return;
+    }
+
+    try {
+      await apiRequest(`/api/patients/${patientToDelete}`, { method: 'DELETE' });
+      setIsDeleteOpen(false);
+      setPatientToDelete(null);
+      toast({ title: 'Registro eliminado', variant: 'destructive' });
+      loadData();
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo eliminar',
+        description: error instanceof Error ? error.message : 'Error inesperado',
+      });
     }
   };
 
-  const filteredPatients = patients.filter(p => 
-    p.names.toLowerCase().includes(search.toLowerCase()) || 
-    p.lastNames.toLowerCase().includes(search.toLowerCase()) ||
-    p.dni.includes(search)
+  const filteredPatients = patients.filter((p) =>
+    p.full_name.toLowerCase().includes(search.toLowerCase()) || p.dni.includes(search)
   );
 
   return (
@@ -143,7 +268,7 @@ function PatientsContent() {
         <div className="flex justify-between items-center">
           <div>
             <h2 className="text-3xl font-bold text-primary">Directorio de Pacientes</h2>
-            <p className="text-muted-foreground mt-1">Gestión segura de historias clínicas digitales</p>
+            <p className="text-muted-foreground mt-1">Gestion segura de historias clinicas digitales</p>
           </div>
           <Dialog open={isRegisterOpen} onOpenChange={setIsRegisterOpen}>
             <DialogTrigger asChild>
@@ -152,97 +277,78 @@ function PatientsContent() {
                 Nuevo Paciente
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[95vw] md:max-w-[1000px] h-[90vh] overflow-y-auto rounded-3xl">
+            <DialogContent className="sm:max-w-[95vw] md:max-w-[900px] h-[90vh] overflow-y-auto rounded-3xl">
               <DialogHeader>
-                <DialogTitle className="text-2xl font-bold">Registro de Paciente e Historia Clínica</DialogTitle>
-                <DialogDescription>Complete todos los campos para el expediente legal del paciente.</DialogDescription>
+                <DialogTitle className="text-2xl font-bold">Registro de Paciente</DialogTitle>
+                <DialogDescription>Complete la informacion basica del paciente.</DialogDescription>
               </DialogHeader>
               <form onSubmit={handleRegister} className="grid grid-cols-1 md:grid-cols-2 gap-8 py-4">
                 <div className="space-y-4">
-                  <h3 className="font-bold text-lg border-b pb-2 flex items-center gap-2 text-primary">Datos Personales</h3>
+                  <h3 className="font-bold text-lg border-b pb-2 text-primary">Datos Personales</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="dni">DNI / Pasaporte (Opcional)</Label>
-                      <Input id="dni" value={newPatient.dni} onChange={e => setNewPatient({...newPatient, dni: e.target.value.replace(/\D/g, '').slice(0, 12)})} placeholder="00000000" />
+                      <Label htmlFor="dni">DNI / Pasaporte</Label>
+                      <Input
+                        id="dni"
+                        value={newPatient.dni}
+                        onChange={(e) => setNewPatient({ ...newPatient, dni: e.target.value.replace(/\D/g, '').slice(0, 12) })}
+                        placeholder="00000000"
+                      />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="phone">Celular de Contacto</Label>
-                      <Input id="phone" value={newPatient.phone} onChange={e => setNewPatient({...newPatient, phone: e.target.value})} required />
+                      <Label htmlFor="phone">Celular</Label>
+                      <Input id="phone" value={newPatient.phone} onChange={(e) => setNewPatient({ ...newPatient, phone: e.target.value })} required />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="names">Nombres</Label>
-                      <Input id="names" value={newPatient.names} onChange={e => setNewPatient({...newPatient, names: e.target.value})} required />
+                      <Input id="names" value={newPatient.names} onChange={(e) => setNewPatient({ ...newPatient, names: e.target.value })} required />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="lastNames">Apellidos Completos</Label>
-                      <Input id="lastNames" value={newPatient.lastNames} onChange={e => setNewPatient({...newPatient, lastNames: e.target.value})} required />
+                      <Label htmlFor="lastNames">Apellidos</Label>
+                      <Input id="lastNames" value={newPatient.lastNames} onChange={(e) => setNewPatient({ ...newPatient, lastNames: e.target.value })} required />
                     </div>
                     <div className="space-y-2 col-span-2">
-                      <Label htmlFor="email">Correo Electrónico</Label>
-                      <Input id="email" type="email" value={newPatient.email} onChange={e => setNewPatient({...newPatient, email: e.target.value})} />
+                      <Label htmlFor="email">Correo (opcional)</Label>
+                      <Input
+                        id="email"
+                        type="text"
+                        inputMode="email"
+                        autoComplete="email"
+                        placeholder="nombre@dominio.com"
+                        value={newPatient.email}
+                        onChange={(e) => setNewPatient({ ...newPatient, email: e.target.value.trimStart() })}
+                      />
                     </div>
                     <div className="space-y-2 col-span-2">
-                      <Label htmlFor="address">Dirección de Domicilio</Label>
-                      <Input id="address" value={newPatient.address} onChange={e => setNewPatient({...newPatient, address: e.target.value})} required />
-                    </div>
-                    <div className="space-y-2 col-span-2">
-                      <Label>Fotografía del Paciente</Label>
-                      <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl border-2 border-dashed">
-                        <div className="w-20 h-20 rounded-lg bg-white border flex items-center justify-center overflow-hidden shadow-sm">
-                          {photoPreview ? <img src={photoPreview} className="w-full h-full object-cover" /> : <Camera className="w-8 h-8 opacity-20" />}
-                        </div>
-                        <Input type="file" accept="image/*" onChange={handlePhotoUpload} className="flex-1 h-10 border-none bg-transparent" />
-                      </div>
+                      <Label htmlFor="address">Direccion</Label>
+                      <Input id="address" value={newPatient.address} onChange={(e) => setNewPatient({ ...newPatient, address: e.target.value })} required />
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                  <h3 className="font-bold text-lg border-b pb-2 flex items-center gap-2 text-primary">Anamnesis / Historia Médica</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex items-center justify-between p-3 border rounded-xl bg-slate-50/50">
-                      <Label className="text-xs font-bold">Bajo tratamiento</Label>
-                      <Switch checked={newPatient.underTreatment} onCheckedChange={v => setNewPatient({...newPatient, underTreatment: v})} />
-                    </div>
-                    <div className="flex items-center justify-between p-3 border rounded-xl bg-slate-50/50">
-                      <Label className="text-xs font-bold text-red-600">Hemorragias</Label>
-                      <Switch checked={newPatient.proneToBleeding} onCheckedChange={v => setNewPatient({...newPatient, proneToBleeding: v})} />
-                    </div>
-                    <div className="flex items-center justify-between p-3 border rounded-xl bg-slate-50/50">
-                      <Label className="text-xs font-bold">Hipertenso</Label>
-                      <Switch checked={newPatient.hypertensive} onCheckedChange={v => setNewPatient({...newPatient, hypertensive: v})} />
-                    </div>
-                    <div className="flex items-center justify-between p-3 border rounded-xl bg-slate-50/50">
-                      <Label className="text-xs font-bold">Diabético</Label>
-                      <Switch checked={newPatient.diabetic} onCheckedChange={v => setNewPatient({...newPatient, diabetic: v})} />
-                    </div>
-                    <div className="flex items-center justify-between p-3 border rounded-xl bg-slate-50/50 col-span-2">
-                      <Label className="text-xs font-bold">¿En periodo de embarazo?</Label>
-                      <Switch checked={newPatient.pregnant} onCheckedChange={v => setNewPatient({...newPatient, pregnant: v})} />
-                    </div>
-                    <div className="col-span-2 space-y-2">
-                      <div className="flex items-center justify-between p-3 border rounded-xl bg-red-50 border-red-100">
-                        <Label className="text-xs font-black text-red-700">ALÉRGICO A MEDICAMENTOS</Label>
-                        <Switch checked={newPatient.allergicToMeds} onCheckedChange={v => setNewPatient({...newPatient, allergicToMeds: v})} />
-                      </div>
-                      {newPatient.allergicToMeds && (
-                        <Input placeholder="Especifique los medicamentos..." value={newPatient.allergiesDetail} onChange={e => setNewPatient({...newPatient, allergiesDetail: e.target.value})} className="border-red-200 focus:ring-red-200" />
-                      )}
-                    </div>
-                    <div className="col-span-2 space-y-2">
+                  <h3 className="font-bold text-lg border-b pb-2 text-primary">Historia Medica</h3>
+                  <div className="space-y-3">
+                    <div className="space-y-2">
                       <Label className="font-bold text-xs uppercase tracking-widest text-muted-foreground">Motivo de consulta</Label>
-                      <Input value={newPatient.consultationReason} onChange={e => setNewPatient({...newPatient, consultationReason: e.target.value})} required className="h-11 rounded-xl" />
+                      <Input value={newPatient.consultationReason} onChange={(e) => setNewPatient({ ...newPatient, consultationReason: e.target.value })} />
                     </div>
-                    <div className="col-span-2 space-y-2">
-                      <Label className="font-bold text-xs uppercase tracking-widest text-muted-foreground">Diagnóstico Preliminar</Label>
-                      <Textarea value={newPatient.diagnostic} onChange={e => setNewPatient({...newPatient, diagnostic: e.target.value})} className="rounded-xl min-h-[80px]" />
+                    <div className="space-y-2">
+                      <Label className="font-bold text-xs uppercase tracking-widest text-muted-foreground">Observaciones medicas</Label>
+                      <Textarea value={newPatient.medicalObservations} onChange={(e) => setNewPatient({ ...newPatient, medicalObservations: e.target.value })} className="rounded-xl min-h-[120px]" />
                     </div>
-                    <div className="col-span-2 space-y-2">
-                      <Label className="font-bold text-xs uppercase tracking-widest text-muted-foreground">Médico Tratante</Label>
-                      <Select onValueChange={v => setNewPatient({...newPatient, attendedBy: v})}>
-                        <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Seleccione Odontólogo" /></SelectTrigger>
+                    <div className="space-y-2">
+                      <Label className="font-bold text-xs uppercase tracking-widest text-muted-foreground">Medico tratante</Label>
+                      <Select value={newPatient.attendedBy} onValueChange={(v) => setNewPatient({ ...newPatient, attendedBy: v })}>
+                        <SelectTrigger className="h-11 rounded-xl">
+                          <SelectValue placeholder="Seleccione Odontologo" />
+                        </SelectTrigger>
                         <SelectContent>
-                          {users.map(u => <SelectItem key={u.id} value={u.fullName || u.username || 'Odontólogo'}>{u.fullName || u.username}</SelectItem>)}
+                          {staffOptions.map((u) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {u.label}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -250,7 +356,9 @@ function PatientsContent() {
                 </div>
 
                 <DialogFooter className="col-span-full pt-6 border-t mt-4">
-                  <Button type="submit" className="w-full h-14 text-lg font-black rounded-2xl shadow-xl shadow-primary/20">REGISTRAR HISTORIA CLÍNICA</Button>
+                  <Button type="submit" className="w-full h-14 text-lg font-black rounded-2xl shadow-xl shadow-primary/20">
+                    REGISTRAR HISTORIA CLINICA
+                  </Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -260,54 +368,61 @@ function PatientsContent() {
         <Card className="p-8 border-none shadow-sm rounded-[2rem]">
           <div className="relative mb-8 max-w-2xl">
             <Search className="absolute left-4 top-3.5 h-5 w-5 text-muted-foreground" />
-            <Input 
-              placeholder="Buscar por DNI, Nombres o Apellidos..." 
-              className="pl-12 h-12 rounded-2xl bg-slate-50 border-none shadow-inner text-base"
+            <Input
+              placeholder="Buscar por DNI o nombre..."
+              className="pl-12 h-12 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border-none shadow-inner text-base"
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={(e) => setSearch(e.target.value)}
             />
           </div>
 
           <div className="border rounded-[1.5rem] overflow-hidden">
             <Table>
-              <TableHeader className="bg-slate-50/50">
+              <TableHeader className="bg-slate-50/50 dark:bg-slate-800/80">
                 <TableRow>
                   <TableHead className="font-black uppercase text-[10px] tracking-widest">Documento</TableHead>
                   <TableHead className="font-black uppercase text-[10px] tracking-widest">Paciente</TableHead>
-                  <TableHead className="font-black uppercase text-[10px] tracking-widest">Celular</TableHead>
-                  <TableHead className="font-black uppercase text-[10px] tracking-widest">Médico Asignado</TableHead>
-                  <TableHead className="text-right font-black uppercase text-[10px] tracking-widest">Acciones de Control</TableHead>
+                  <TableHead className="text-right font-black uppercase text-[10px] tracking-widest">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredPatients.length > 0 ? (
-                  filteredPatients.map((p) => (
-                    <TableRow key={p.id} className="group hover:bg-slate-50 transition-colors">
-                      <TableCell className="font-mono text-xs">{p.dni}</TableCell>
-                      <TableCell className="font-black text-slate-800">{p.lastNames}, {p.names}</TableCell>
-                      <TableCell className="text-sm font-medium">{p.phone}</TableCell>
-                      <TableCell className="text-sm">
-                        <Badge variant="outline" className="bg-primary/5 text-primary border-primary/10">Dr. {p.attendedBy || 'N/A'}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button asChild variant="secondary" size="sm" className="gap-2 h-9 rounded-xl font-bold">
-                            <Link href={`/patients/${p.id}`}>
-                              <Eye className="w-4 h-4" /> Ver Historial
-                            </Link>
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDeleteRequest(p.id)} className="h-9 w-9 text-destructive opacity-0 group-hover:opacity-100 transition-opacity rounded-xl hover:bg-red-50">
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  filteredPatients.map((p) => {
+                    const nameData = splitName(p.full_name);
+                    return (
+                      <TableRow key={p.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
+                        <TableCell className="font-mono text-xs">{p.dni}</TableCell>
+                        <TableCell className="font-black text-slate-800 dark:text-slate-100">
+                          {nameData.lastNames ? `${nameData.lastNames}, ${nameData.names}` : p.full_name}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button onClick={() => openEditModal(p.id)} variant="outline" size="sm" className="gap-2 h-9 rounded-xl font-bold">
+                              <Edit2 className="w-4 h-4" /> Editar
+                            </Button>
+                            <Button asChild variant="secondary" size="sm" className="gap-2 h-9 rounded-xl font-bold">
+                              <Link href={`/patients/${p.id}`}>
+                                <Eye className="w-4 h-4" /> Ver Historial
+                              </Link>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteRequest(p.id)}
+                              className="h-9 w-9 text-destructive opacity-0 group-hover:opacity-100 transition-opacity rounded-xl hover:bg-red-50 dark:hover:bg-red-950/40"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-24 text-muted-foreground bg-slate-50/30">
-                       <UserPlus className="w-12 h-12 mx-auto mb-4 opacity-10" />
-                       <p className="font-bold uppercase tracking-widest text-xs">No se encontraron registros</p>
+                    <TableCell colSpan={3} className="text-center py-24 text-muted-foreground bg-slate-50/30 dark:bg-slate-800/40">
+                      <UserPlus className="w-12 h-12 mx-auto mb-4 opacity-10" />
+                      <p className="font-bold uppercase tracking-widest text-xs">No se encontraron registros</p>
                     </TableCell>
                   </TableRow>
                 )}
@@ -317,34 +432,40 @@ function PatientsContent() {
         </Card>
       </div>
 
-      {/* SECURITY: Password Confirmation for Deletion */}
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <DialogContent className="sm:max-w-md rounded-[2.5rem] border-none shadow-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3 text-destructive text-xl font-black">
-              <div className="p-2 bg-red-100 rounded-lg"><ShieldAlert className="w-6 h-6" /></div>
-              Confirmar Eliminación
+              <div className="p-2 bg-red-100 rounded-lg">
+                <ShieldAlert className="w-6 h-6" />
+              </div>
+              Confirmar Eliminacion
             </DialogTitle>
             <DialogDescription className="text-base font-medium pt-2">
-              Esta acción es irreversible y eliminará todo el historial clínico, odontogramas y pagos del paciente.
+              Esta accion es irreversible. Escriba ELIMINAR para confirmar.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-6">
             <div className="space-y-3">
-              <Label htmlFor="pass-confirm" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Ingrese su contraseña de acceso</Label>
-              <Input 
-                id="pass-confirm" 
-                type="password" 
-                value={confirmPassword} 
-                onChange={(e) => setConfirmPassword(e.target.value)} 
-                placeholder="••••••••"
-                className="h-12 rounded-xl bg-slate-50 focus:bg-white transition-all border-none shadow-inner"
+              <Label htmlFor="confirm-delete" className="text-xs font-black uppercase tracking-widest text-muted-foreground">
+                Confirmacion
+              </Label>
+              <Input
+                id="confirm-delete"
+                value={confirmWord}
+                onChange={(e) => setConfirmWord(e.target.value)}
+                placeholder="ELIMINAR"
+                className="h-12 rounded-xl bg-slate-50 dark:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-700 transition-all border-none shadow-inner"
               />
             </div>
           </div>
           <DialogFooter className="gap-3">
-            <Button variant="outline" onClick={() => setIsDeleteOpen(false)} className="h-12 rounded-xl font-bold flex-1">Cancelar</Button>
-            <Button variant="destructive" onClick={confirmDelete} className="h-12 rounded-xl font-black flex-1 shadow-lg shadow-red-500/20">ELIMINAR PERMANENTE</Button>
+            <Button variant="outline" onClick={() => setIsDeleteOpen(false)} className="h-12 rounded-xl font-bold flex-1">
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete} className="h-12 rounded-xl font-black flex-1 shadow-lg shadow-red-500/20">
+              ELIMINAR PERMANENTE
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -4,13 +4,14 @@
 import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { db, User, PaymentMethod } from '@/lib/db';
+import { db, PaymentMethod } from '@/lib/legacy-data';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Lock, ShieldCheck, User as UserIcon, QrCode, Building2, Plus, Trash2, Camera, Wallet, Palette, Sun, Moon, Laptop, Sparkles, Type } from 'lucide-react';
+import { useMutation } from '@/hooks/use-mutation';
+import { Lock, ShieldCheck, User as UserIcon, QrCode, Building2, Plus, Trash2, Camera, Wallet, Palette, Sun, Moon, Laptop, Sparkles, Type, Eye, EyeOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -18,14 +19,43 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
+type BrandingResponse = {
+  clinic: {
+    id: string;
+    name: string;
+    domain: string;
+    logo_url: string | null;
+    primary_color: string | null;
+    slogan: string | null;
+    theme: string;
+    subscription_status: 'active' | 'suspended' | 'blocked';
+    next_payment_date: string | null;
+  };
+};
+
+type BrandingPayload = {
+  brandName?: string;
+  primaryColor?: string;
+  slogan?: string;
+  logoUrl?: string;
+  theme?: 'light' | 'dark' | 'system';
+};
+
 function ProfileContent() {
   const { user, logout, updateUser } = useAuth();
   const { toast } = useToast();
   const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
   const [isChanging, setIsChanging] = useState(false);
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [isSavingAppearance, setIsSavingAppearance] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [isMethodOpen, setIsMethodOpen] = useState(false);
+  const { mutate: saveBranding } = useMutation<BrandingResponse, BrandingPayload>(
+    '/api/clinics/me/branding',
+    'PUT'
+  );
   
   // States for branding
   const [primaryColor, setPrimaryColor] = useState(user?.primaryColor || '#008080');
@@ -40,6 +70,15 @@ function ProfileContent() {
     if (user?.role === 'admin') loadMethods();
   }, [user]);
 
+  useEffect(() => {
+    if (!user) return;
+    setPrimaryColor(user.primaryColor || '#008080');
+    setPhotoPreview(user.photo || null);
+    setSelectedTheme(user.theme || 'light');
+    setBrandName(user.brandName || '');
+    setSlogan(user.slogan || '');
+  }, [user?.id, user?.primaryColor, user?.photo, user?.theme, user?.brandName, user?.slogan]);
+
   const loadMethods = async () => {
     const all = await db.getAll<PaymentMethod>('payment_methods');
     setPaymentMethods(all);
@@ -48,7 +87,7 @@ function ProfileContent() {
   if (!user) return null;
 
   const isAdmin = user.role === 'admin';
-  const isClinic = user.role === 'clinic';
+  const isClinic = ['clinic', 'clinic_owner', 'clinic_admin'].includes(user.role);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,16 +95,24 @@ function ProfileContent() {
       toast({ variant: 'destructive', title: 'Error', description: 'Las contraseñas nuevas no coinciden.' });
       return;
     }
-    if (passwords.current !== user.password) {
-      toast({ variant: 'destructive', title: 'Error', description: 'La contraseña actual es incorrecta.' });
-      return;
-    }
     setIsChanging(true);
     try {
-      const updatedUser: User = { ...user, password: passwords.new };
-      await db.put('users', updatedUser);
-      toast({ title: 'Éxito', description: 'Contraseña actualizada. Su sesión se cerrará en breve.' });
-      setTimeout(() => logout(), 2000);
+      const resp = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ current_password: passwords.current, new_password: passwords.new, confirm_password: passwords.confirm }),
+      });
+
+      const body = await resp.json().catch(() => ({}));
+
+      if (!resp.ok) {
+        toast({ variant: 'destructive', title: 'Error', description: (body && (body.error || body.message)) || 'No se pudo actualizar la contraseña.' });
+        return;
+      }
+
+      toast({ title: 'Contraseña actualizada', description: 'La contraseña se ha actualizado. Se cerrará la sesión.' });
+      setTimeout(() => logout(), 1200);
     } catch (error) {
       toast({ variant: 'destructive', title: 'Error', description: 'No se pudo actualizar la contraseña.' });
     } finally {
@@ -77,17 +124,43 @@ function ProfileContent() {
     if (!user) return;
     setIsSavingAppearance(true);
     try {
-      const updatedUser: User = { 
-        ...user, 
-        primaryColor, 
-        photo: photoPreview || undefined,
+      let updatedUser = {
+        ...user,
         theme: selectedTheme,
-        brandName: brandName || undefined,
-        slogan: slogan || undefined
       };
-      await db.put('users', updatedUser);
+
+      if (isClinic) {
+        const response = await saveBranding({
+          brandName: brandName || undefined,
+          primaryColor,
+          slogan: slogan || undefined,
+          logoUrl: photoPreview || undefined,
+          theme: selectedTheme,
+        });
+
+        if (!response?.clinic) {
+          throw new Error('No se pudo guardar la personalizacion de la clinica');
+        }
+
+        const clinicTheme =
+          response.clinic.theme === 'light' || response.clinic.theme === 'dark' || response.clinic.theme === 'system'
+            ? response.clinic.theme
+            : selectedTheme;
+
+        updatedUser = {
+          ...updatedUser,
+          theme: clinicTheme,
+          primaryColor: response.clinic.primary_color ?? undefined,
+          photo: response.clinic.logo_url ?? undefined,
+          brandName: response.clinic.name,
+          slogan: response.clinic.slogan ?? undefined,
+          subscriptionStatus: response.clinic.subscription_status ?? user.subscriptionStatus,
+          nextPaymentDate: response.clinic.next_payment_date ?? undefined,
+        };
+      }
+
       updateUser(updatedUser);
-      toast({ title: "Identidad Visual Actualizada", description: "Los cambios se han aplicado a todo el sistema." });
+      toast({ title: 'Identidad Visual Actualizada', description: 'Los cambios se han aplicado para tu clinica.' });
     } catch (e) {
       toast({ variant: 'destructive', title: "Error", description: "No se pudieron guardar los cambios." });
     } finally {
@@ -160,9 +233,33 @@ function ProfileContent() {
                 <CardHeader><CardTitle className="text-lg flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-primary" /> Cambiar Contraseña</CardTitle></CardHeader>
                 <form onSubmit={handleChangePassword}>
                   <CardContent className="space-y-4">
-                    <div className="space-y-2"><Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Contraseña Actual</Label><Input type="password" value={passwords.current} onChange={e => setPasswords({...passwords, current: e.target.value})} required className="rounded-xl h-12 bg-slate-50 dark:bg-slate-900" /></div>
-                    <div className="space-y-2"><Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Nueva Contraseña</Label><Input type="password" value={passwords.new} onChange={e => setPasswords({...passwords, new: e.target.value})} required className="rounded-xl h-12 bg-slate-50 dark:bg-slate-900" /></div>
-                    <div className="space-y-2"><Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Confirmar Nueva Contraseña</Label><Input type="password" value={passwords.confirm} onChange={e => setPasswords({...passwords, confirm: e.target.value})} required className="rounded-xl h-12 bg-slate-50 dark:bg-slate-900" /></div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Contraseña Actual</Label>
+                      <div className="relative">
+                        <Input type={showCurrent ? 'text' : 'password'} value={passwords.current} onChange={e => setPasswords({...passwords, current: e.target.value})} required className="rounded-xl h-12 bg-slate-50 dark:bg-slate-900 pr-12" />
+                        <button type="button" onClick={() => setShowCurrent(prev => !prev)} aria-label={showCurrent ? 'Ocultar contraseña actual' : 'Mostrar contraseña actual'} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">
+                          {showCurrent ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Nueva Contraseña</Label>
+                      <div className="relative">
+                        <Input type={showNew ? 'text' : 'password'} value={passwords.new} onChange={e => setPasswords({...passwords, new: e.target.value})} required className="rounded-xl h-12 bg-slate-50 dark:bg-slate-900 pr-12" />
+                        <button type="button" onClick={() => setShowNew(prev => !prev)} aria-label={showNew ? 'Ocultar nueva contraseña' : 'Mostrar nueva contraseña'} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">
+                          {showNew ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Confirmar Nueva Contraseña</Label>
+                      <div className="relative">
+                        <Input type={showConfirm ? 'text' : 'password'} value={passwords.confirm} onChange={e => setPasswords({...passwords, confirm: e.target.value})} required className="rounded-xl h-12 bg-slate-50 dark:bg-slate-900 pr-12" />
+                        <button type="button" onClick={() => setShowConfirm(prev => !prev)} aria-label={showConfirm ? 'Ocultar confirmar contraseña' : 'Mostrar confirmar contraseña'} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">
+                          {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                      </div>
+                    </div>
                   </CardContent>
                   <CardFooter><Button type="submit" className="w-full h-14 text-lg font-black rounded-2xl shadow-xl shadow-primary/20" disabled={isChanging}>{isChanging ? 'Procesando...' : 'Guardar Nueva Contraseña'}</Button></CardFooter>
                 </form>
