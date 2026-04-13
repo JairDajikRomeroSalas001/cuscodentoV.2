@@ -1,10 +1,9 @@
-
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react'; // Añadido useCallback
 import { useAuth } from '@/hooks/use-auth';
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
-import { Users, UserSquare2, Stethoscope, Landmark, Activity, Calendar, Database, LogOut, LayoutDashboard, ShieldCheck, BarChart3, CreditCard, AlertTriangle, QrCode, Building2, ShieldAlert, Banknote, User as UserIcon, X, MessageCircle, Boxes, Wallet, Timer, AlertCircle, Sun, Moon, Laptop, Sparkles, Copy } from 'lucide-react';
+import { Users, UserSquare2, Stethoscope, Landmark, Activity, Calendar, Database, LogOut, LayoutDashboard, ShieldCheck, BarChart3, CreditCard, AlertTriangle, QrCode, Building2, ShieldAlert, Banknote, User as UserIcon, MessageCircle, Boxes, Wallet, Timer, AlertCircle, Sun, Moon, Sparkles, Copy } from 'lucide-react'; // Limpiadas variables no usadas
 import { usePathname, useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -77,6 +76,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, logout, updateUser } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+  const { toast } = useToast(); // Movido aquí arriba para cumplir con Rules of Hooks
   
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
@@ -84,6 +84,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [moraCountdown, setMoraCountdown] = useState(5);
   const [qrPreview, setQrPreview] = useState<string | null>(null);
   const [isQrOpen, setIsQrOpen] = useState(false);
+
   const overdueDays = user?.nextPaymentDate
     ? Math.max(0, differenceInCalendarDays(new Date(), parseISO(user.nextPaymentDate)))
     : 0;
@@ -122,6 +123,26 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, user, isAdmin, router]);
 
+  // Usamos useCallback para que 'load' pueda ser una dependencia de useEffect
+  const loadMethods = useCallback(async (mounted: boolean) => {
+    try {
+      const raw = await db.getAll<any>('payment_methods');
+      if (!mounted) return;
+      const mapped = (raw || []).map((it: any) => ({
+        id: it.id,
+        type: it.type === 'qr' ? 'qr' : 'bank',
+        label: it.label || it.name || '',
+        value: it.value || '',
+        qrImage: it.qrImage,
+        holder: it.holder || undefined,
+        cci: it.cci || undefined,
+      }));
+      setPaymentMethods(mapped as PaymentMethod[]);
+    } catch {
+      setPaymentMethods([]);
+    }
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     if (!user) {
@@ -129,30 +150,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const load = async () => {
-      try {
-        const raw = await db.getAll<any>('payment_methods');
-        if (!mounted) return;
-        const mapped = (raw || []).map((it: any) => ({
-          id: it.id,
-          type: it.type === 'qr' ? 'qr' : 'bank',
-          label: it.label || it.name || '',
-          value: it.value || '',
-          qrImage: it.qrImage,
-          holder: it.holder || undefined,
-          cci: it.cci || undefined,
-        }));
-        setPaymentMethods(mapped as PaymentMethod[]);
-      } catch (e) {
-        setPaymentMethods([]);
-      }
-    };
-
-    load();
+    loadMethods(mounted);
 
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'kusko_payment_methods_v1' || e.key === null) {
-        load();
+        loadMethods(mounted);
       }
     };
 
@@ -162,7 +164,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       mounted = false;
       window.removeEventListener('storage', onStorage);
     };
-  }, [user?.id]);
+  }, [user?.id, loadMethods]);
 
   useEffect(() => {
     if (!isOverdue || isAdmin || !user?.id || reminderIntervalMs <= 0) {
@@ -253,13 +255,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     updateUser(updatedUser);
   };
 
-  const { toast } = useToast();
-
   const handleCopy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
       toast({ title: 'Copiado', description: 'Datos copiados al portapapeles' });
-    } catch (err) {
+    } catch {
       toast({ variant: 'destructive', title: 'No se pudo copiar', description: 'Permisos denegados o navegador no soportado' });
     }
   };
@@ -304,6 +304,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <SidebarHeader className="p-8 pb-4">
             {user.photo ? (
               <div className="h-16 w-full flex items-center justify-start overflow-hidden px-2 mb-2">
+                {/* Nota: Se recomienda usar <Image /> de next/image aquí para producción */}
                 <img src={user.photo} className="max-h-full max-w-full object-contain" alt="Logo de la Clínica" />
               </div>
             ) : (
