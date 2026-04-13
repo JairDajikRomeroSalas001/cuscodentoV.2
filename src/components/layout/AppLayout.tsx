@@ -4,12 +4,15 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
-import { Users, UserSquare2, Stethoscope, Landmark, Activity, Calendar, Database, LogOut, LayoutDashboard, ShieldCheck, BarChart3, CreditCard, AlertTriangle, QrCode, Building2, ShieldAlert, Banknote, User as UserIcon, X, MessageCircle, Boxes, Wallet, Timer, AlertCircle, Sun, Moon, Laptop, Sparkles } from 'lucide-react';
+import { Users, UserSquare2, Stethoscope, Landmark, Activity, Calendar, Database, LogOut, LayoutDashboard, ShieldCheck, BarChart3, CreditCard, AlertTriangle, QrCode, Building2, ShieldAlert, Banknote, User as UserIcon, X, MessageCircle, Boxes, Wallet, Timer, AlertCircle, Sun, Moon, Laptop, Sparkles, Copy } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { format, parseISO, differenceInCalendarDays } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
+import { useToast } from '@/hooks/use-toast';
+import { db } from '@/lib/legacy-data';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
@@ -19,6 +22,8 @@ type PaymentMethod = {
   label: string;
   value: string;
   qrImage?: string;
+  holder?: string;
+  cci?: string;
 };
 
 function hexToHsl(hex: string) {
@@ -77,6 +82,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [isMoraReminderOpen, setIsMoraReminderOpen] = useState(false);
   const [moraCountdown, setMoraCountdown] = useState(5);
+  const [qrPreview, setQrPreview] = useState<string | null>(null);
+  const [isQrOpen, setIsQrOpen] = useState(false);
   const overdueDays = user?.nextPaymentDate
     ? Math.max(0, differenceInCalendarDays(new Date(), parseISO(user.nextPaymentDate)))
     : 0;
@@ -116,7 +123,45 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }, [pathname, user, isAdmin, router]);
 
   useEffect(() => {
-    setPaymentMethods([]);
+    let mounted = true;
+    if (!user) {
+      setPaymentMethods([]);
+      return;
+    }
+
+    const load = async () => {
+      try {
+        const raw = await db.getAll<any>('payment_methods');
+        if (!mounted) return;
+        const mapped = (raw || []).map((it: any) => ({
+          id: it.id,
+          type: it.type === 'qr' ? 'qr' : 'bank',
+          label: it.label || it.name || '',
+          value: it.value || '',
+          qrImage: it.qrImage,
+          holder: it.holder || undefined,
+          cci: it.cci || undefined,
+        }));
+        setPaymentMethods(mapped as PaymentMethod[]);
+      } catch (e) {
+        setPaymentMethods([]);
+      }
+    };
+
+    load();
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'kusko_payment_methods_v1' || e.key === null) {
+        load();
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+
+    return () => {
+      mounted = false;
+      window.removeEventListener('storage', onStorage);
+    };
   }, [user?.id]);
 
   useEffect(() => {
@@ -206,6 +251,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     const newTheme: 'light' | 'dark' = user.theme === 'dark' ? 'light' : 'dark';
     const updatedUser: typeof user = { ...user, theme: newTheme };
     updateUser(updatedUser);
+  };
+
+  const { toast } = useToast();
+
+  const handleCopy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: 'Copiado', description: 'Datos copiados al portapapeles' });
+    } catch (err) {
+      toast({ variant: 'destructive', title: 'No se pudo copiar', description: 'Permisos denegados o navegador no soportado' });
+    }
   };
 
   const menuItems = [
@@ -384,14 +440,20 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                            <div className="min-w-0 w-full space-y-3">
                              <p className="text-[11px] font-black uppercase text-muted-foreground tracking-widest leading-none">{m.label}</p>
                              <p className="text-xl font-black text-slate-900 dark:text-white break-all leading-tight">{m.value}</p>
-                             {m.qrImage && (
-                               <div className="mt-6 p-6 bg-white rounded-3xl inline-block shadow-2xl border-4 border-primary/10">
-                                 <img src={m.qrImage} className="w-64 h-64 object-contain mx-auto" alt="QR de Pago" />
-                                 <div className="mt-4 py-3 bg-primary text-white rounded-xl">
-                                   <p className="text-[11px] font-black uppercase tracking-widest">Escanea para pagar</p>
-                                 </div>
-                               </div>
-                             )}
+                            {m.qrImage && (
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => { setQrPreview(m.qrImage || null); setIsQrOpen(true); }}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setQrPreview(m.qrImage || null); setIsQrOpen(true); } }}
+                                className="mt-6 p-6 bg-white rounded-3xl inline-block shadow-2xl border-4 border-primary/10 cursor-pointer hover:scale-105 transition-transform"
+                              >
+                                <img src={m.qrImage} className="w-64 h-64 object-contain mx-auto" alt="QR de Pago" />
+                                <div className="mt-4 py-3 bg-primary text-white rounded-xl">
+                                  <p className="text-[11px] font-black uppercase tracking-widest">Escanea para pagar</p>
+                                </div>
+                              </div>
+                            )}
                            </div>
                         </div>
                       ))}
@@ -430,26 +492,65 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   Realice su abono mensual para mantener el servicio activo. Luego de pagar, reporte su comprobante para la validación manual.
                 </DialogDescription>
               </DialogHeader>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {paymentMethods.map(m => (
-                  <div key={m.id} className="p-8 rounded-[2.5rem] border-2 bg-slate-50 dark:bg-slate-900 flex flex-col items-center gap-6 transition-all hover:bg-white dark:hover:bg-slate-950 hover:shadow-2xl hover:border-primary/20 group">
-                     <div className="p-5 bg-white dark:bg-slate-800 rounded-2xl text-primary border shadow-sm group-hover:scale-110 transition-transform">
-                       {m.type === 'qr' ? <QrCode className="w-8 h-8" /> : <Building2 className="w-8 h-8" />}
-                     </div>
-                     <div className="text-center w-full space-y-3">
-                        <p className="text-[11px] font-black uppercase text-muted-foreground tracking-widest leading-none">{m.label}</p>
-                        <p className="text-2xl font-black text-slate-900 dark:text-white break-all leading-tight">{m.value}</p>
-                        {m.qrImage && (
-                          <div className="mt-8 p-6 bg-white rounded-[2rem] inline-block border-2 border-primary/10 shadow-2xl group-hover:border-primary/40 transition-colors">
-                            <img src={m.qrImage} className="w-64 h-64 object-contain mx-auto" alt="QR Scan" />
-                            <div className="mt-4 py-3 bg-primary text-white rounded-xl">
-                               <p className="text-[10px] font-black uppercase tracking-widest">Escanear QR</p>
+              <div className="space-y-4">
+                <Accordion type="single" collapsible>
+                  {paymentMethods.map((m) => (
+                      <AccordionItem value={m.id} key={m.id} className="rounded-xl overflow-hidden bg-white/5 dark:bg-slate-900/40 backdrop-blur-sm border border-white/6">
+                      <AccordionTrigger className="px-4">
+                        <div className="flex items-center gap-4 w-full">
+                          <div className="w-12 h-12 rounded-md flex items-center justify-center bg-gradient-to-br from-white/5 to-white/3 text-white">
+                            {m.type === 'qr' ? <QrCode className="w-6 h-6 text-emerald-400" /> : <Building2 className="w-6 h-6 text-sky-400" />}
+                          </div>
+                          <div className="flex-1 text-left">
+                            <div className="text-sm font-black">{m.label}</div>
+                          </div>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="px-4">
+                        <div className="py-3 grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+                          <div className="sm:col-span-2">
+                            <p className="text-[11px] text-muted-foreground">Número / Cuenta</p>
+                            <div className="mt-1 font-black text-lg break-all text-white">{m.value}</div>
+                            {m.cci && (
+                              <p className="text-[11px] text-muted-foreground mt-2 flex items-center justify-between">
+                                <span>CCI: <span className="font-bold">{m.cci}</span></span>
+                                <button type="button" onClick={() => handleCopy(m.cci || '')} className="ml-4 text-sm px-3 py-2 rounded-lg bg-white/5 hover:bg-white/6">Copiar</button>
+                              </p>
+                            )}
+                            <p className="text-[11px] text-muted-foreground mt-2">Titular: <span className="font-bold">{m.holder || '---'}</span></p>
+                          </div>
+                          <div className="flex sm:justify-end sm:flex-col sm:items-end gap-4">
+                            {m.qrImage ? (
+                              <div className="hidden sm:block">
+                                <img
+                                  src={m.qrImage}
+                                  className="w-56 h-56 object-contain rounded-lg shadow-md cursor-pointer hover:scale-105 transition-transform"
+                                  alt={`${m.label} QR`}
+                                  onClick={() => { setQrPreview(m.qrImage || null); setIsQrOpen(true); }}
+                                />
+                              </div>
+                            ) : null}
+                            <div className="flex sm:justify-end">
+                              <Button variant="ghost" size="sm" onClick={() => handleCopy(m.value)} className="h-12 px-4 rounded-lg bg-white/5 hover:bg-white/6">
+                                <Copy className="w-4 h-4 mr-2" /> Copiar
+                              </Button>
                             </div>
                           </div>
+                        </div>
+                        {m.qrImage && (
+                          <div className="mt-4 sm:hidden">
+                            <img
+                              src={m.qrImage}
+                              className="w-56 h-56 object-contain mx-auto rounded-lg cursor-pointer hover:scale-105 transition-transform"
+                              alt={`${m.label} QR`}
+                              onClick={() => { setQrPreview(m.qrImage || null); setIsQrOpen(true); }}
+                            />
+                          </div>
                         )}
-                     </div>
-                  </div>
-                ))}
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
               </div>
               <div className="pt-10 border-t space-y-8">
                 <p className="text-[11px] font-black text-center text-muted-foreground uppercase tracking-[0.4em]">Reportar Pago vía WhatsApp</p>
@@ -462,6 +563,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   </a>
                 </div>
               </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={isQrOpen} onOpenChange={(open) => { setIsQrOpen(open); if (!open) setQrPreview(null); }}>
+          <DialogContent className="sm:max-w-3xl rounded-[2rem] p-4">
+            <div className="p-4 flex items-center justify-center">
+              {qrPreview && (
+                <img src={qrPreview} alt="QR preview" className="w-full h-auto max-h-[80vh] object-contain rounded-lg" />
+              )}
             </div>
           </DialogContent>
         </Dialog>

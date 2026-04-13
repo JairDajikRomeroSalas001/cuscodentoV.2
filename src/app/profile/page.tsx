@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation } from '@/hooks/use-mutation';
-import { Lock, ShieldCheck, User as UserIcon, QrCode, Building2, Plus, Trash2, Camera, Wallet, Palette, Sun, Moon, Laptop, Sparkles, Type, Eye, EyeOff } from 'lucide-react';
+import { Lock, ShieldCheck, User as UserIcon, QrCode, Building2, Plus, Trash2, Camera, Wallet, Palette, Sun, Moon, Laptop, Sparkles, Type, Eye, EyeOff, Edit } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -64,7 +64,7 @@ function ProfileContent() {
   const [brandName, setBrandName] = useState(user?.brandName || '');
   const [slogan, setSlogan] = useState(user?.slogan || '');
 
-  const [newMethod, setNewMethod] = useState<Partial<PaymentMethod>>({ type: 'bank', label: '', value: '', qrImage: '' });
+  const [newMethod, setNewMethod] = useState<Partial<PaymentMethod>>({ type: 'bank', label: '', value: '', qrImage: '', holder: '', cci: '' });
 
   useEffect(() => {
     if (user?.role === 'admin') loadMethods();
@@ -180,15 +180,17 @@ function ProfileContent() {
   const handleAddMethod = async (e: React.FormEvent) => {
     e.preventDefault();
     const method: PaymentMethod = {
-      id: crypto.randomUUID(),
+      id: (newMethod.id as string) || crypto.randomUUID(),
       type: newMethod.type as 'qr' | 'bank',
       label: newMethod.label || '',
       value: newMethod.value || '',
-      qrImage: newMethod.qrImage
+      qrImage: newMethod.qrImage,
+      holder: newMethod.holder || undefined,
+      cci: newMethod.cci || undefined,
     };
     await db.put('payment_methods', method);
     setIsMethodOpen(false);
-    setNewMethod({ type: 'bank', label: '', value: '', qrImage: '' });
+    setNewMethod({ type: 'bank', label: '', value: '', qrImage: '', holder: '', cci: '', id: undefined });
     toast({ title: "Medio de pago agregado" });
     loadMethods();
   };
@@ -400,10 +402,13 @@ function ProfileContent() {
                           <div className="flex items-start gap-5">
                             <div className="p-5 bg-white dark:bg-slate-800 rounded-2xl text-primary shadow-sm border border-slate-100 dark:border-slate-700 transition-transform group-hover:scale-105"><QrCode className="w-8 h-8" /></div>
                             <div className="flex-1 min-w-0">
-                              <p className="font-black text-[10px] uppercase text-muted-foreground tracking-widest mb-1">{m.label}</p>
-                              <p className="text-lg font-black break-all text-slate-800 dark:text-white leading-tight">{m.value}</p>
+                                <p className="font-black text-[10px] uppercase text-muted-foreground tracking-widest mb-1">{m.label}</p>
+                                <p className="text-lg font-black break-all text-slate-800 dark:text-white leading-tight">{m.value}</p>
+                                  {m.cci && <p className="text-sm text-muted-foreground mt-2">CCI: <span className="font-bold">{m.cci}</span></p>}
+                                  <p className="text-sm text-muted-foreground mt-2">Titular: <span className="font-bold">{m.holder || '---'}</span></p>
                             </div>
                           </div>
+                          <Button variant="ghost" size="icon" onClick={() => { setNewMethod(m); setIsMethodOpen(true); }} className="absolute top-3 right-12 opacity-0 group-hover:opacity-100 transition-opacity bg-white/50 dark:bg-slate-800/50 rounded-full"><Edit className="w-5 h-5" /></Button>
                           <Button variant="ghost" size="icon" onClick={() => deleteMethod(m.id)} className="absolute top-3 right-3 text-destructive opacity-0 group-hover:opacity-100 transition-opacity bg-white/50 dark:bg-slate-800/50 rounded-full hover:bg-red-50"><Trash2 className="w-5 h-5" /></Button>
                         </CardContent>
                       </Card>
@@ -431,6 +436,8 @@ function ProfileContent() {
               <div className="space-y-2"><Label className="text-xs font-bold uppercase tracking-widest">Tipo de Medio</Label><Select value={newMethod.type} onValueChange={v => setNewMethod({...newMethod, type: v as any})}><SelectTrigger className="h-12 rounded-2xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bank">Cuenta Bancaria (Transferencia)</SelectItem><SelectItem value="qr">Código QR (Yape/Plin)</SelectItem></SelectContent></Select></div>
               <div className="space-y-2"><Label className="text-xs font-bold uppercase tracking-widest">Entidad / Banco</Label><Input value={newMethod.label} onChange={e => setNewMethod({...newMethod, label: e.target.value})} required className="h-12 rounded-2xl bg-slate-50" placeholder="Ej: BCP Soles" /></div>
               <div className="space-y-2"><Label className="text-xs font-bold uppercase tracking-widest">Número / Dato</Label><Input value={newMethod.value} onChange={e => setNewMethod({...newMethod, value: e.target.value})} required className="h-12 rounded-2xl bg-slate-50" placeholder="Ej: 191-234567-0-91" /></div>
+              <div className="space-y-2"><Label className="text-xs font-bold uppercase tracking-widest">CCI (Opcional)</Label><Input value={newMethod.cci} onChange={e => setNewMethod({...newMethod, cci: e.target.value})} className="h-12 rounded-2xl bg-slate-50" placeholder="Ej: 106042321009293744" /></div>
+              <div className="space-y-2"><Label className="text-xs font-bold uppercase tracking-widest">Nombre del Titular</Label><Input value={newMethod.holder} onChange={e => setNewMethod({...newMethod, holder: e.target.value})} className="h-12 rounded-2xl bg-slate-50" placeholder="Ej: Juan Perez" /></div>
               {newMethod.type === 'qr' && <div className="space-y-2"><Label className="text-xs font-bold uppercase tracking-widest">Imagen del Código QR</Label><div className="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl border-2 border-dashed"><QrCode className="w-8 h-8 opacity-20" /><Input type="file" accept="image/*" onChange={handleQrUpload} className="h-10 border-none bg-transparent shadow-none" /></div></div>}
               <Button type="submit" className="w-full h-16 text-lg font-black rounded-2xl shadow-xl shadow-primary/20 mt-4">Guardar Configuración</Button>
             </form>
