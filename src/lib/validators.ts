@@ -54,6 +54,10 @@ export const CreatePatientSchema = z.object({
   postal_code: z.string().optional(),
   gender: z.string().optional(),
   medical_observations: z.string().optional(),
+  under_treatment: z.boolean().optional(),
+  prone_to_bleeding: z.boolean().optional(),
+  allergic_to_meds: z.boolean().optional(),
+  allergies_detail: z.string().optional(),
   registered_by: optionalCuid,
 });
 

@@ -81,6 +81,10 @@ function PatientsContent() {
     consultationReason: '',
     medicalObservations: '',
     attendedBy: '',
+    under_treatment: false,
+    prone_to_bleeding: false,
+    allergic_to_meds: false,
+    allergies_detail: '',
   });
 
   const [staffOptions, setStaffOptions] = useState<Array<{ id: string; label: string }>>([]);
@@ -152,6 +156,10 @@ function PatientsContent() {
             medical_observations: [newPatient.consultationReason, newPatient.medicalObservations]
               .filter(Boolean)
               .join(' | ') || undefined,
+            under_treatment: newPatient.under_treatment,
+            prone_to_bleeding: newPatient.prone_to_bleeding,
+            allergic_to_meds: newPatient.allergic_to_meds,
+            allergies_detail: newPatient.allergies_detail || undefined,
           }),
         });
       } else {
@@ -169,6 +177,10 @@ function PatientsContent() {
             medical_observations: [newPatient.consultationReason, newPatient.medicalObservations]
               .filter(Boolean)
               .join(' | ') || undefined,
+            under_treatment: newPatient.under_treatment,
+            prone_to_bleeding: newPatient.prone_to_bleeding,
+            allergic_to_meds: newPatient.allergic_to_meds,
+            allergies_detail: newPatient.allergies_detail || undefined,
           }),
         });
       }
@@ -199,6 +211,10 @@ function PatientsContent() {
       consultationReason: '',
       medicalObservations: '',
       attendedBy: '',
+      under_treatment: false,
+      prone_to_bleeding: false,
+      allergic_to_meds: false,
+      allergies_detail: '',
     });
   };
 
@@ -217,6 +233,10 @@ function PatientsContent() {
         consultationReason: (data.medical_observations || '').split('|')[0]?.trim() || '',
         medicalObservations: (data.medical_observations || '').split('|').slice(1).join(' | ').trim() || '',
         attendedBy: data.registered_by || '',
+        under_treatment: !!data.under_treatment,
+        prone_to_bleeding: !!data.prone_to_bleeding,
+        allergic_to_meds: !!data.allergic_to_meds,
+        allergies_detail: data.allergies_detail || '',
       });
       setEditingPatientId(patientId);
       setIsRegisterOpen(true);
@@ -233,20 +253,25 @@ function PatientsContent() {
 
   const confirmDelete = async () => {
     if (!patientToDelete) return;
-
-    if (confirmWord.trim().toUpperCase() !== 'ELIMINAR') {
+    if (!confirmWord || confirmWord.trim().length === 0) {
       toast({
         variant: 'destructive',
-        title: 'Confirmacion invalida',
-        description: 'Escriba ELIMINAR para confirmar la eliminacion.',
+        title: 'Contraseña requerida',
+        description: 'Ingrese su contraseña para confirmar la eliminación.',
       });
       return;
     }
 
     try {
+      await apiRequest('/api/auth/verify-password', {
+        method: 'POST',
+        body: JSON.stringify({ password: confirmWord }),
+      });
+
       await apiRequest(`/api/patients/${patientToDelete}`, { method: 'DELETE' });
       setIsDeleteOpen(false);
       setPatientToDelete(null);
+      setConfirmWord('');
       toast({ title: 'Registro eliminado', variant: 'destructive' });
       loadData();
     } catch (error) {
@@ -329,6 +354,57 @@ function PatientsContent() {
                 <div className="space-y-4">
                   <h3 className="font-bold text-lg border-b pb-2 text-primary">Historia Medica</h3>
                   <div className="space-y-3">
+                    <div>
+                      <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Alertas de Historia Clinica</Label>
+                      <div className="grid grid-cols-3 gap-3 mt-2">
+                        <div className="space-y-2">
+                          <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">T. Médico</Label>
+                          <Select value={newPatient.under_treatment ? 'si' : 'no'} onValueChange={(v) => setNewPatient({ ...newPatient, under_treatment: v === 'si' })}>
+                            <SelectTrigger className="h-11 rounded-xl">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="no">NO</SelectItem>
+                              <SelectItem value="si">SI</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Hemorragias</Label>
+                          <Select value={newPatient.prone_to_bleeding ? 'si' : 'no'} onValueChange={(v) => setNewPatient({ ...newPatient, prone_to_bleeding: v === 'si' })}>
+                            <SelectTrigger className="h-11 rounded-xl">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="no">NO</SelectItem>
+                              <SelectItem value="si">SI</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Alergias</Label>
+                          <Select value={newPatient.allergic_to_meds ? 'si' : 'no'} onValueChange={(v) => setNewPatient({ ...newPatient, allergic_to_meds: v === 'si' })}>
+                            <SelectTrigger className="h-11 rounded-xl">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="no">NO</SelectItem>
+                              <SelectItem value="si">SI</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {newPatient.allergic_to_meds && (
+                        <div className="space-y-2 mt-3">
+                          <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Detalle alergias</Label>
+                          <Input value={newPatient.allergies_detail} onChange={(e) => setNewPatient({ ...newPatient, allergies_detail: e.target.value })} />
+                        </div>
+                      )}
+                    </div>
+
                     <div className="space-y-2">
                       <Label className="font-bold text-xs uppercase tracking-widest text-muted-foreground">Motivo de consulta</Label>
                       <Input value={newPatient.consultationReason} onChange={(e) => setNewPatient({ ...newPatient, consultationReason: e.target.value })} />
@@ -393,7 +469,9 @@ function PatientsContent() {
                       <TableRow key={p.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
                         <TableCell className="font-mono text-xs">{p.dni}</TableCell>
                         <TableCell className="font-black text-slate-800 dark:text-slate-100">
-                          {nameData.lastNames ? `${nameData.lastNames}, ${nameData.names}` : p.full_name}
+                          {(nameData.names
+                            ? `${nameData.names}${nameData.lastNames ? ` ${nameData.lastNames}` : ''}`
+                            : p.full_name).toUpperCase()}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
@@ -442,19 +520,20 @@ function PatientsContent() {
               Confirmar Eliminacion
             </DialogTitle>
             <DialogDescription className="text-base font-medium pt-2">
-              Esta accion es irreversible. Escriba ELIMINAR para confirmar.
+              Esta acción es irreversible. Ingrese la contraseña con la que inició sesión para confirmar.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-6">
             <div className="space-y-3">
               <Label htmlFor="confirm-delete" className="text-xs font-black uppercase tracking-widest text-muted-foreground">
-                Confirmacion
+                Contraseña
               </Label>
               <Input
                 id="confirm-delete"
+                type="password"
                 value={confirmWord}
                 onChange={(e) => setConfirmWord(e.target.value)}
-                placeholder="ELIMINAR"
+                placeholder="Contraseña"
                 className="h-12 rounded-xl bg-slate-50 dark:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-700 transition-all border-none shadow-inner"
               />
             </div>

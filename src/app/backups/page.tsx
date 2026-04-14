@@ -35,19 +35,30 @@ function BackupContent() {
 
   const handleAuthorizedAction = async () => {
     if (!user) return;
-
-    // API auth no expone password hash al cliente; usamos palabra de confirmacion local.
-    if (confirmPassword.trim().toUpperCase() !== 'CONFIRMAR') {
-      toast({ variant: "destructive", title: "Error de Seguridad", description: "Contraseña incorrecta." });
+    if (!confirmPassword || confirmPassword.trim().length === 0) {
+      toast({ variant: "destructive", title: "Contraseña requerida", description: "Ingrese su contraseña para confirmar." });
       return;
     }
 
-    setIsAuthOpen(false);
+    try {
+      const res = await fetch('/api/auth/verify-password', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: confirmPassword }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error || 'Contraseña incorrecta');
 
-    if (authAction === 'export') {
-      executeExport();
-    } else if (authAction === 'import' && pendingFile) {
-      executeImport(pendingFile);
+      setIsAuthOpen(false);
+
+      if (authAction === 'export') {
+        executeExport();
+      } else if (authAction === 'import' && pendingFile) {
+        executeImport(pendingFile);
+      }
+    } catch (err) {
+      toast({ variant: "destructive", title: "Error de Seguridad", description: err instanceof Error ? err.message : 'Contraseña incorrecta.' });
     }
   };
 
@@ -168,7 +179,7 @@ function BackupContent() {
               Verificación de Identidad
             </DialogTitle>
             <DialogDescription className="text-base font-bold pt-2">
-              Para realizar operaciones maestras de datos, escriba CONFIRMAR.
+              Para realizar operaciones maestras de datos, ingrese la contraseña con la que inició sesión.
             </DialogDescription>
           </DialogHeader>
           <div className="p-6 space-y-6">
@@ -176,10 +187,10 @@ function BackupContent() {
               <Label htmlFor="pass-auth" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Contraseña de Seguridad</Label>
               <Input 
                 id="pass-auth" 
-                type="text" 
+                type="password" 
                 value={confirmPassword} 
                 onChange={(e) => setConfirmPassword(e.target.value)} 
-                placeholder="CONFIRMAR"
+                placeholder="Contraseña"
                 className="h-14 rounded-2xl bg-slate-50 focus:bg-white transition-all border-none shadow-inner text-lg"
               />
             </div>

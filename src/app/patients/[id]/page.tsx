@@ -539,7 +539,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
 
   const openPaymentModal = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
-    setPaymentForm({ amount: appointment.cost.toFixed(2), method: 'cash', notes: '' });
+    const existingPayments = payments.filter((p) => p.appointmentId === appointment.id && !String(p.id).startsWith('pending-'));
+    const remaining = existingPayments.length > 0 ? existingPayments.reduce((acc, p) => acc + p.balance, 0) : appointment.cost;
+    setPaymentForm({ amount: remaining.toFixed(2), method: 'cash', notes: '' });
     setShowPaymentModal(true);
   };
 
@@ -551,19 +553,34 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
 
     setIsSubmittingPayment(true);
     try {
-      const response = await fetch('/api/payments', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patient_id: id,
-          appointment_id: selectedAppointment.id,
-          amount: Number(paymentForm.amount),
-          payment_method: paymentForm.method,
-          notes: paymentForm.notes,
-          total_cost: selectedAppointment.cost,
-        }),
-      });
+      const existingPayment = payments.find((p) => p.appointmentId === selectedAppointment.id && !String(p.id).startsWith('pending-'));
+      let response: Response;
+      if (existingPayment) {
+        response = await fetch(`/api/payments/${existingPayment.id}/history`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount_paid: Number(paymentForm.amount),
+            payment_method: paymentForm.method,
+            reference: paymentForm.notes,
+          }),
+        });
+      } else {
+        response = await fetch('/api/payments', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            patient_id: id,
+            appointment_id: selectedAppointment.id,
+            amount: Number(paymentForm.amount),
+            payment_method: paymentForm.method,
+            notes: paymentForm.notes,
+            total_cost: selectedAppointment.cost,
+          }),
+        });
+      }
 
       if (!response.ok) {
         const error = await response.json();
@@ -597,7 +614,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                 <Link href="/patients"><ChevronLeft /></Link>
               </Button>
               <div>
-                <h2 className="text-3xl font-bold text-primary">{patient.lastNames}, {patient.names}</h2>
+                <h2 className="text-3xl font-bold text-primary">{`${patient.names}${patient.lastNames ? ` ${patient.lastNames}` : ''}`.toUpperCase()}</h2>
                 <div className="flex gap-4 mt-1">
                   <Badge variant="outline" className="border-primary text-primary">DNI: {patient.dni}</Badge>
                   <span className="text-sm text-muted-foreground">Paciente desde: {patient.registrationDate}</span>
@@ -874,7 +891,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                       </TableHeader>
                       <TableBody>
                         {appointments.map(a => {
-                          const hasPaidForAppointment = payments.some(p => p.appointmentId === a.id);
+                          const totalPaidForAppointment = payments.reduce((acc, p) => (p.appointmentId === a.id ? acc + p.totalPaid : acc), 0);
+                          const isFullyPaid = totalPaidForAppointment >= a.cost;
                           return (
                             <TableRow key={a.id}>
                               <TableCell className="font-medium">{a.date} - {a.time}</TableCell>
@@ -883,13 +901,14 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                               <TableCell className="font-bold">S/. {a.cost.toFixed(2)}</TableCell>
                               <TableCell className="text-xs italic">{a.observations || '-'}</TableCell>
                               <TableCell>
-                                {a.status === 'Atendido' && !hasPaidForAppointment && (
+                                {isFullyPaid ? (
+                                  <Badge variant="default" className="bg-emerald-500">Pagado</Badge>
+                                ) : a.status === 'Atendido' ? (
                                   <Button size="sm" variant="outline" onClick={() => openPaymentModal(a)}>
                                     Registrar Pago
                                   </Button>
-                                )}
-                                {hasPaidForAppointment && (
-                                  <Badge variant="default" className="bg-emerald-500">Pagado</Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-amber-600 border-amber-600">PENDIENTE</Badge>
                                 )}
                               </TableCell>
                             </TableRow>

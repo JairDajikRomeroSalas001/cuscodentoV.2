@@ -296,19 +296,26 @@ function AppointmentsContent() {
   const confirmDelete = async () => {
     if (!appointmentToDelete) return;
 
-    if (confirmWord.trim().toUpperCase() !== 'ELIMINAR') {
+    if (!confirmWord || confirmWord.trim().length === 0) {
       toast({
         variant: 'destructive',
-        title: 'Confirmacion invalida',
-        description: 'Escriba ELIMINAR para confirmar la eliminacion.',
+        title: 'Contraseña requerida',
+        description: 'Ingrese su contraseña para confirmar la eliminación.',
       });
       return;
     }
 
     try {
+      // Verificar que la contraseña ingresada corresponde al usuario autenticado
+      await apiRequest('/api/auth/verify-password', {
+        method: 'POST',
+        body: JSON.stringify({ password: confirmWord }),
+      });
+
       await apiRequest(`/api/appointments/${appointmentToDelete}`, { method: 'DELETE' });
       setIsDeleteOpen(false);
       setAppointmentToDelete(null);
+      setConfirmWord('');
       toast({ title: 'Cita eliminada' });
       load();
     } catch (error) {
@@ -572,15 +579,15 @@ function AppointmentsContent() {
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
-              <ShieldAlert className="w-5 h-5" /> Confirmar Eliminacion
-            </DialogTitle>
-            <DialogDescription>Esta accion es irreversible. Escriba ELIMINAR para continuar.</DialogDescription>
-          </DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-destructive">
+                  <ShieldAlert className="w-5 h-5" /> Confirmar Eliminacion
+                </DialogTitle>
+                <DialogDescription>Esta acción es irreversible. Ingrese la contraseña con la que inició sesión para confirmar.</DialogDescription>
+              </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="delete-confirm">Confirmacion</Label>
-              <Input id="delete-confirm" value={confirmWord} onChange={(e) => setConfirmWord(e.target.value)} placeholder="ELIMINAR" />
+              <Label htmlFor="delete-confirm">Contraseña</Label>
+              <Input id="delete-confirm" type="password" value={confirmWord} onChange={(e) => setConfirmWord(e.target.value)} placeholder="Contraseña" />
             </div>
           </div>
           <DialogFooter>
